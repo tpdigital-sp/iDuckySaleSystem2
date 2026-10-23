@@ -11,9 +11,21 @@ export type DoorHangerView = "front" | "right" | "left" | "back";
 /** เนื้อวัสดุ (กลุ่ม "ชนิดวัสดุ") — clear = มองทะลุได้ */
 export type DoorHangerMaterial = "mdf" | "acrylic-clear" | "acrylic-white" | "acrylic-color" | "paper" | "pet-clear" | "pet-white";
 
+/** ผิวอะคริลิคสีพิเศษ — solid = สีทึบเงา · frost = ใสขุ่น · glitter = กากเพชร · mirror = กระจก · holo = โฮโลแกรม */
+export type DoorHangerFinish = "solid" | "frost" | "glitter" | "mirror" | "holo";
+
+export interface DoorHangerTint {
+  /** ชื่อเฉดตามตัวเลือก "สีอะคริลิค" */
+  name: string;
+  color: number;
+  finish: DoorHangerFinish;
+}
+
 export interface DoorHangerMock {
   kind: "doorhanger";
   material: DoorHangerMaterial;
+  /** 🎨 เฉดของอะคริลิคสีพิเศษ (กลุ่ม "สีอะคริลิค") — เนื้อแผ่น/ด้านหลังงานสกรีน 1 ด้านเป็นสีนี้ (เจ้าของร้านแจ้ง 23 ต.ค. 69) */
+  tint?: DoorHangerTint;
   /** ชื่อวัสดุที่ลูกค้าเลือก (ป้ายบนหน้าต่าง 3D) */
   label?: string;
 }
@@ -32,6 +44,54 @@ export const DOOR_HANGER_MAT: Record<DoorHangerMaterial, { t: number; clear: boo
   "pet-white": { t: 0.5, clear: false, edge: 0xffffff, face: 0xffffff, th: "PET ขาว" },
 };
 
+/**
+ * เฉด → สี/ผิว (ค่าประมาณจากชื่อเฉด · ข้อแรกที่ตรงชนะ — ชื่อเจาะจงต้องมาก่อนชื่อกว้าง เช่น "ส้มแดง" ก่อน "ส้ม" · "กุหลาบแดง" ก่อน "แดง")
+ */
+const TINTS: [RegExp, number, DoorHangerFinish][] = [
+  [/กากเพชร.*เงิน|กลิ[ตท]เตอร์.*เงิน/, 0xd8dce2, "glitter"],
+  [/กากเพชร.*โรสโกลด์/, 0xe7b0a0, "glitter"],
+  [/กากเพชร.*แดง/, 0xc8202f, "glitter"],
+  [/กากเพชร.*ม่วง/, 0x8a4fc4, "glitter"],
+  [/กลิ[ตท]เตอร์.*ทอง/, 0xd9b54a, "glitter"],
+  [/กลิ[ตท]เตอร์.*รุ้ง/, 0xe6e0f2, "holo"],
+  [/hologram|โฮโลแกรม/i, 0xdfe3ea, "holo"],
+  [/กระจก/, 0xd5d9de, "mirror"],
+  [/ใสขุ่น|C-01/i, 0xeef2f4, "frost"],
+  [/ส้มแดง/, 0xf2542d, "solid"],
+  [/ส้มอ่อน|OR-02/, 0xffb36b, "solid"],
+  [/ส้ม/, 0xff8a1f, "solid"],
+  [/กุหลาบแดง/, 0xb3122e, "solid"],
+  [/กุหลาบชมพู/, 0xe8578d, "solid"],
+  [/ไข่แดง/, 0xffb000, "solid"],
+  [/แดง/, 0xd9202b, "solid"],
+  [/ชมพู/, 0xf6a8c8, "solid"],
+  [/เหลืองเข้ม/, 0xf2b705, "solid"],
+  [/เลมอน/, 0xfff35a, "solid"],
+  [/มัสตาร์ด/, 0xd9a514, "solid"],
+  [/เหลือง/, 0xffe14a, "solid"],
+  [/ทอง/, 0xc9a227, "solid"],
+  [/เทามุก/, 0xc4c6c9, "solid"],
+  [/เทา/, 0x8e9399, "solid"],
+  [/หญ้าเขียว/, 0x4caf3c, "solid"],
+  [/แอปเปิ้ลเขียว/, 0x8fd14f, "solid"],
+  [/เขียว/, 0x2fae5b, "solid"],
+  [/ท้องฟ้า/, 0x5fb7ec, "solid"],
+  [/น้ำเงิน/, 0x1f3f9b, "solid"],
+  [/ฟ้า/, 0x7cc4ea, "solid"],
+  [/ม่วง/, 0x7b4bb3, "solid"],
+  [/น้ำตาล/, 0x7a4a2a, "solid"],
+  [/ดำ/, 0x1d1d1f, "solid"],
+  [/ครีม/, 0xf3e6c8, "solid"],
+  [/ขาว/, 0xf7f7f5, "solid"],
+];
+
+export function doorHangerTintOf(name: string): DoorHangerTint | undefined {
+  const n = name.trim();
+  if (!n) return undefined;
+  const hit = TINTS.find(([re]) => re.test(n));
+  return hit ? { name: n, color: hit[1], finish: hit[2] } : undefined;
+}
+
 export function doorHangerMockFrom(sel: Record<string, string | undefined>): DoorHangerMock {
   const v = String(sel["ชนิดวัสดุ"] ?? "").trim();
   const material: DoorHangerMaterial = /MDF/i.test(v)
@@ -47,5 +107,6 @@ export function doorHangerMockFrom(sel: Record<string, string | undefined>): Doo
           : /สีพิเศษ/.test(v)
             ? "acrylic-color"
             : "acrylic-clear";
-  return { kind: "doorhanger", material, label: v || undefined };
+  const tint = material === "acrylic-color" ? doorHangerTintOf(String(sel["สีอะคริลิค"] ?? "")) : undefined;
+  return { kind: "doorhanger", material, ...(tint ? { tint } : {}), label: v || undefined };
 }

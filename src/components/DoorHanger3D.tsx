@@ -265,7 +265,43 @@ export default function DoorHanger3D({
         const T = mat.t;
         const plate = new THREE.Group();
         const shape = toShape(cutCs);
-        const faceMat = mat.clear
+        // 🎨 อะคริลิคสีพิเศษ — เนื้อแผ่นตามเฉดที่เลือก (หลังงานสกรีน 1 ด้าน = สีอะคริลิค · เจ้าของร้านแจ้ง 23 ต.ค. 69)
+        const tint = mock.tint;
+        const tintMat = () => {
+          if (!tint) return null;
+          const base = { color: tint.color, metalness: 0, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05 };
+          if (tint.finish === "frost") return m(new THREE.MeshPhysicalMaterial({ ...base, roughness: 0.6, clearcoat: 0.3, transparent: true, opacity: 0.82 }));
+          if (tint.finish === "mirror") return m(new THREE.MeshPhysicalMaterial({ ...base, metalness: 1, roughness: 0.04, envMapIntensity: 1.6 }));
+          if (tint.finish === "holo")
+            return m(
+              new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.75, roughness: 0.18, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [120, 900], envMapIntensity: 1.5 }),
+            );
+          if (tint.finish === "glitter") {
+            // กากเพชร = จุดสว่างสุ่มบนพื้นเฉด (uv ของแผ่น = มม. → ปูซ้ำทุก 40 มม.)
+            const c = document.createElement("canvas");
+            c.width = c.height = 256;
+            const x = c.getContext("2d");
+            if (x) {
+              x.fillStyle = `#${tint.color.toString(16).padStart(6, "0")}`;
+              x.fillRect(0, 0, 256, 256);
+              for (let i = 0; i < 900; i++) {
+                x.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.7})`;
+                x.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 1.8, 1 + Math.random() * 1.8);
+              }
+            }
+            const t = new THREE.CanvasTexture(c);
+            t.colorSpace = THREE.SRGBColorSpace;
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(1 / 40, 1 / 40);
+            mats.push(t);
+            return m(new THREE.MeshPhysicalMaterial({ ...base, color: 0xffffff, map: t, metalness: 0.45, roughness: 0.3 }));
+          }
+          return m(new THREE.MeshPhysicalMaterial(base));
+        };
+        const tinted = tintMat();
+        const faceMat = tinted
+          ? tinted
+          : mat.clear
           ? m(
               new THREE.MeshPhysicalMaterial({
                 color: 0xe6f4f8,
@@ -280,7 +316,9 @@ export default function DoorHanger3D({
               }),
             )
           : m(new THREE.MeshPhysicalMaterial({ color: mat.face, roughness: mock.material === "mdf" ? 0.3 : 0.45, metalness: 0, clearcoat: mock.material.startsWith("acrylic") || mock.material === "mdf" ? 0.6 : 0.1 }));
-        const edgeMat = mat.clear
+        const edgeMat = tinted
+          ? tinted
+          : mat.clear
           ? m(new THREE.MeshPhysicalMaterial({ color: mat.edge, roughness: 0.1, transparent: true, opacity: 0.9, clearcoat: 1 }))
           : m(new THREE.MeshStandardMaterial({ color: mat.edge, roughness: mock.material === "mdf" ? 0.9 : 0.5 }));
         const body = new THREE.Mesh(g(new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false, curveSegments: 32 })), [faceMat, edgeMat]);
@@ -458,7 +496,7 @@ export default function DoorHanger3D({
               <span className="shrink-0">ดูแบบ 3D</span>
               <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-extrabold text-stone-700 ring-1 ring-sky-200">
                 <span className="truncate">ป้ายแขวนประตู</span>
-                <span className="truncate text-stone-400">· {mat.th}</span>
+                <span className="truncate text-stone-400">· {mock.tint?.name ?? mat.th}</span>
               </span>
             </p>
             <p className="truncate text-xs text-stone-500">
