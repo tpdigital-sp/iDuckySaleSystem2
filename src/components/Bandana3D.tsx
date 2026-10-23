@@ -1,19 +1,16 @@
 "use client";
 
 /**
- * 🐶🧸 พรีวิว "ดูแบบ 3D" ปลอกคอสัตว์เลี้ยง — วางลายของลูกค้าลงบนผ้าพันคอขาวในรูปตุ๊กตาพุดเดิ้ลของร้าน (ด้านหน้า / ด้านข้าง)
- * (23 ต.ค. 69 เจ้าของร้านส่งรูปพุดเดิ้ลใส่ผ้าพันคอขาว 2 มุม "นำภาพนี้ไปแทนที่ 3D เดิม" — แทนหุ่น three.js ที่ปั้นเองแล้วโดนทักว่า "ดูตลก/ไม่ได้สัดส่วน")
+ * 🐶🧸 พรีวิว "ดูแบบ 3D" ปลอกคอสัตว์เลี้ยง — วางลายของลูกค้าลงบนผ้าพันคอขาวในรูปตุ๊กตาพุดเดิ้ลของร้าน หมุนดูได้ครบรอบ 360°
+ * (23 ต.ค. 69 เจ้าของร้าน: "นำภาพนี้ไปแทนที่ 3D เดิม" → "ทำให้มันหมุนได้รอบให้หน่อย" → ส่งชุดรูป 5 มุม "เพิ่มภาพเข้าไปให้หน่อย")
  *
- * หมุนได้ (23 ต.ค. 69 "ทำให้มันหมุนได้รอบให้หน่อย"): ลากซ้าย-ขวา / หมุนโชว์ ไล่ หันซ้าย (รูปข้าง) ↔ หน้า ↔ หันขวา (รูปข้างกลับด้าน วางลายอีกครึ่งผืน ตัวหนังสือไม่กลับ)
- *   ผสมภาพมุมข้างเคียง + บีบแนวนอน · ด้านหลังยังไม่มีรูป (ต้องมีรูปเพิ่มถึงจะหมุนครบรอบ)
- *
- * รูป + mask อยู่ใน public/mock/collar-animal (ครึ่งซ้าย/ขวาของรูปต้นฉบับ 768×1024 ต่อมุม):
- *   poodle-front.webp / poodle-front-mask.png   ผ้าขาวด้านหน้า (ขาว = ผ้า)
- *   poodle-side.webp  / poodle-side-mask.png    ผ้าขาวด้านข้าง · poodle-side-knot.png = ปม+ชายผ้าท้ายทอย (ย้อมสีมุมผ้าของลาย)
- *   (mask หาด้วย OpenCV: พิกเซลขาวไม่อมเหลือง r−b<16 ที่ต่อกับจุดกลางผ้า · โครงร่างด้านล่างคือ approxPolyDP ของ mask)
- * การวางลาย: แบ่งผ้าเป็นตาราง (u,v) → Coons patch จากโครงร่าง (ขอบบน T · ขอบซ้าย L · ขอบขวา R · ยอด A) → วาดลายทีละสามเหลี่ยมด้วย affine
- *   u ↔ s (ตำแหน่งตามความกว้างผืน): ด้านหน้าเห็นครึ่งหน้าของรอบคอ (asin ย่อปลาย) · ด้านข้างเห็น s 0.5 (กลาง = ขอบหน้าอก) → 0 (มุมผ้าที่ปม)
- *   v ↔ t (ความลึก 0 = ขอบคอ · 1 = ยอด) · ลึกลงไปผ้าห้อยแบน → ค่อย ๆ กลับเป็นเส้นตรง
+ * รูปชุด 5 มุม (แถวบนของรูปที่เจ้าของร้านส่ง · ตัดทีละตัว จัดกึ่งกลางลำตัว ขยาย ×2 = 720×1200) อยู่ใน public/mock/collar-animal:
+ *   poodle360-<front|q-left|side|back|q-right>.webp  · -mask.png = ผ้าส่วนที่วางลาย (convex hull ของผ้าขาว — ฝั่งเงาไม่แหว่ง)
+ *   -knot.png = ปม/ชายผ้า/แถบผ้าท้ายทอย (ย้อมสีมุมผ้าของลาย ไม่แปะลาย) · มุม back มีแต่ knot
+ * มุมหมุน (องศา · หมุนรอบตัวน้อง): หน้า 0 · เฉียงซ้าย 45 · ข้าง (จมูกชี้ซ้าย) 90 · หลัง 180 · ข้างกลับด้าน 270 (รูปข้างกลับซ้าย-ขวา) · เฉียงขวา 315
+ *   ระหว่างมุมผสมภาพสองรูปข้างเคียง + บีบแนวนอนนิดหน่อย ให้รู้สึกหมุน
+ * การวางลาย: แบ่งผ้าในรูปเป็นตาราง (u,v) → Coons patch จากโครงร่าง (ขอบบน T · ขอบซ้าย L · ขอบขวา R · ยอด) → วาดลายทีละสามเหลี่ยมด้วย affine
+ *   v ↔ t (ความลึก 0 = ขอบคอ · 1 = ยอด) · u ↔ มุมรอบตัว θ ที่เห็นจากมุมนั้น (ขอบรูป = ขอบผ้าหรือเส้นโค้งคอ) ฉายแบบ sin → s ตำแหน่งตามความกว้างผืน
  *   ผสมแบบ multiply ทับผ้าขาว = เห็นเงา/รอยพับ/ตะเข็บของรูปจริงทะลุลาย · ส่วนโปร่ง/ขาวของลาย = ผ้าขาวตามรูป
  * tie: ลายทั้งอาร์ตบอร์ด · button/strap: ชั้นหน้า = ครึ่งล่างของอาร์ตบอร์ด · ปุ่ม "ดูลายชั้นหลัง" = ครึ่งบน (กลับหัวตามการพับ) วางแทน
  * ⚠️ รูปมีปมผูกท้ายทอย (ตรงกับแบบผูก) · แบบติดกระดุม/ใส่กับสาย ใช้รูปเดียวกัน — ปมในรูปเป็นแค่ภาพประกอบ
@@ -31,23 +28,43 @@ interface Patch {
   /** ขอบขวา (u 1) บน→ยอด */
   R: Pt[];
 }
-const PW = 768;
-const PH = 1024;
+const PW = 720;
+const PH = 1200;
 const ASSET = "/mock/collar-animal";
-/** โครงร่างผ้าในรูป (พิกเซล) — จาก approxPolyDP ของ mask */
-const PATCH: Record<"front" | "side", Patch> = {
+type Shot = "front" | "q-left" | "side" | "back" | "q-right";
+/** โครงร่างผ้าในรูป (พิกเซล 720×1200) — convex hull ของ mask แยกเป็นขอบบน/ซ้าย/ขวา */
+const PATCH: Partial<Record<Shot, Patch>> = {
   front: {
-    T: [[268, 548], [299, 489], [446, 502], [516, 482], [553, 528]],
-    L: [[268, 548], [312, 629], [406, 718]],
-    R: [[553, 528], [544, 566], [487, 645], [406, 718]],
+    T: [[230, 587], [475, 583], [485, 586]],
+    L: [[230, 587], [205, 615], [198, 654], [217, 703], [253, 755], [285, 789], [360, 857]],
+    R: [[485, 586], [510, 614], [518, 631], [518, 647], [427, 796], [367, 856], [360, 857]],
   },
-  // ด้านข้าง: ขอบซ้าย = เส้นกลางผ้า (หน้าอก ตามขอบตัว) · ขอบขวา = ริมผ้าจากปมลงยอด
+  "q-left": {
+    T: [[130, 598], [299, 616], [387, 649]],
+    L: [[130, 598], [95, 698], [89, 746], [127, 831], [161, 881]],
+    R: [[387, 649], [391, 655], [369, 685], [170, 879], [161, 881]],
+  },
   side: {
-    T: [[237, 489], [337, 489], [360, 520], [399, 524], [508, 476]],
-    L: [[237, 489], [214, 616], [220, 739]],
-    R: [[508, 476], [220, 739]],
+    T: [[149, 608], [157, 603], [215, 609], [313, 637]],
+    L: [[149, 608], [110, 809], [104, 868]],
+    R: [[313, 637], [319, 661], [116, 867], [104, 868]],
+  },
+  "q-right": {
+    T: [[357, 622], [560, 580], [563, 582]],
+    L: [[357, 622], [297, 686], [301, 709], [341, 754], [430, 830], [500, 884]],
+    R: [[563, 582], [567, 615], [556, 691], [510, 873], [500, 884]],
   },
 };
+/** เฟรมรอบตัว: มุม (องศา) · รูป · กลับซ้าย-ขวา · ψ = มุมรอบคอที่อยู่กลางภาพ (θ บวก = ทางขวาของภาพตอนมองหน้า) */
+const FRAMES: { deg: number; shot: Shot; mirror?: boolean; psi: number }[] = [
+  { deg: 0, shot: "front", psi: 0 },
+  { deg: 45, shot: "q-left", psi: 45 },
+  { deg: 90, shot: "side", psi: 90 },
+  { deg: 180, shot: "back", psi: 180 },
+  { deg: 270, shot: "side", mirror: true, psi: -90 },
+  { deg: 315, shot: "q-right", psi: -45 },
+];
+const VIEW_DEG: Record<BandanaView, number> = { front: 0, left: 90, back: 180, right: 270 };
 
 /** จุดบนโพลีไลน์ที่สัดส่วนความยาว k ∈ [0,1] */
 function along(poly: Pt[], k: number): Pt {
@@ -122,6 +139,7 @@ function drawTri(ctx: CanvasRenderingContext2D, src: CanvasImageSource, s: [Pt, 
   ctx.restore();
 }
 
+
 export default function Bandana3D({
   sheet,
   sheetMm,
@@ -138,21 +156,22 @@ export default function Bandana3D({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [view, setView] = useState<BandanaView>("front");
+  const [view, setView] = useState<BandanaView | "between">("front");
   const [spin, setSpin] = useState(false);
   /** 🔄 ดูลายชั้นหลัง (ผ้า 2 ชั้นพับ) — เอาครึ่งบนของแบบ (กลับหัวตามการพับ) มาวางแทนชั้นหน้า */
   const [inner, setInner] = useState(false);
   const imgs = useRef<Record<string, HTMLImageElement> | null>(null);
-  /** ภาพสำเร็จต่อมุม (รูป + ลาย) — วาดใหม่เมื่อลาย/ชั้นเปลี่ยน */
-  const frames = useRef<Record<BandanaView, HTMLCanvasElement> | null>(null);
-  /**
-   * 🔄 หมุน (เจ้าของร้านสั่ง 23 ต.ค. 69 "ทำให้มันหมุนได้รอบให้หน่อย"): มุม −90° = หันซ้าย · 0° = หน้า · +90° = หันขวา
-   * มีรูปจริงแค่หน้า + ข้าง → ข้างขวา = รูปข้างกลับซ้าย-ขวา (ลายไม่กลับ) · ระหว่างมุมผสมภาพ + บีบแนวนอนให้รู้สึกหมุน · ด้านหลังยังไม่มีรูป
-   */
-  const ang = useRef({ a: 0, target: null as number | null, spin: false, dir: 1, dragging: false });
+  /** ภาพสำเร็จต่อเฟรม (รูป + ลาย) — วาดใหม่เมื่อลาย/ชั้นเปลี่ยน */
+  const frames = useRef<HTMLCanvasElement[] | null>(null);
+  /** มุมหมุนปัจจุบัน (องศา 0–360) · target = กำลังเลื่อนไปมุมปุ่ม · spin = หมุนโชว์ต่อเนื่อง */
+  const ang = useRef({ a: 0, target: null as number | null, spin: false, dragging: false });
   const drag = useRef<{ x: number; a: number } | null>(null);
   const goView = (v: BandanaView) => {
-    ang.current.target = v === "left" ? -90 : v === "right" ? 90 : 0;
+    const cur = ang.current.a;
+    let t = VIEW_DEG[v];
+    while (t - cur > 180) t -= 360;
+    while (t - cur < -180) t += 360;
+    ang.current.target = t;
     ang.current.spin = false;
     setSpin(false);
   };
@@ -170,8 +189,8 @@ export default function Bandana3D({
 
   useEffect(() => {
     let dead = false;
-    const keys = ["front", "front-mask", "side", "side-mask", "side-knot"];
-    Promise.all(keys.map((k) => loadImg(`${ASSET}/poodle-${k}.${/mask|knot/.test(k) ? "png" : "webp"}`)))
+    const keys = ["front", "front-mask", "q-left", "q-left-mask", "q-left-knot", "side", "side-mask", "side-knot", "back", "back-knot", "q-right", "q-right-mask"];
+    Promise.all(keys.map((k) => loadImg(`${ASSET}/poodle360-${k}.${/mask|knot/.test(k) ? "png" : "webp"}`)))
       .then((list) => {
         if (dead) return;
         imgs.current = Object.fromEntries(keys.map((k, i) => [k, list[i]]));
@@ -186,7 +205,7 @@ export default function Bandana3D({
     };
   }, []);
 
-  // 🎨 วาดภาพสำเร็จ 3 มุม (รูป + ลายบนผ้า)
+  // 🎨 วาดภาพสำเร็จทุกเฟรม (รูป + ลายบนผ้า + ย้อมปม)
   useEffect(() => {
     const im = imgs.current;
     if (status !== "ready" || !im) return;
@@ -195,7 +214,10 @@ export default function Bandana3D({
     const k = sheet.width / W;
     const folded = mock.style !== "tie";
     const wrap = mock.style === "tie" ? 0.94 : mock.style === "button" ? 1.04 : 0.62;
+    /** ครึ่งมุมที่ผ้าคลุมรอบคอ (องศา) ที่ขอบคอ */
+    const thetaMax = Math.min(180, 180 * wrap);
     const useBack = folded && inner;
+    const rad = Math.PI / 180;
 
     /** สีมุมผ้า (ปม/ชายผ้าท้ายทอย) — โปร่ง = ผ้าขาว */
     const tint = (() => {
@@ -208,36 +230,15 @@ export default function Bandana3D({
       const mix = (i: number) => ((a[3] ? a[i] : 255) + (b[3] ? b[i] : 255)) >> 1;
       return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
     })();
+    /** (s,t) → พิกเซลบนอาร์ตบอร์ด (ผืนพับใช้ครึ่งล่าง · ชั้นหลัง = ครึ่งบนกลับหัว) */
+    const srcOf = ([s, t]: [number, number]): Pt => {
+      const xs = W / 2 + (s - 0.5) * W * (1 - t);
+      const ys = !folded ? t * H : useBack ? H / 2 - (t * H) / 2 : H / 2 + (t * H) / 2;
+      return [xs * k, ys * k];
+    };
 
-    const render = (v: BandanaView): HTMLCanvasElement => {
-      const side = v !== "front";
-      const mirror = v === "right";
-      const base = PATCH[side ? "side" : "front"];
-      const mx = (p: Pt): Pt => (mirror ? [PW - p[0], p[1]] : p);
-      const patch: Patch = { T: base.T.map(mx), L: base.L.map(mx), R: base.R.map(mx) };
-      /** (u,v) ของผ้าในรูป → (s,t) บนผืน · ขอบคอเห็นแบบพันรอบ (ย่อปลาย) · ลึกลงไปผ้าห้อยแบน = เส้นตรง */
-      const stOf = (u: number, t: number): [number, number] => {
-        const flat = Math.min(1, t / 0.55);
-        let s: number;
-        if (!side) {
-          const hw0 = Math.min(0.5, 0.25 / wrap);
-          const curved = 0.5 + (Math.asin(Math.max(-1, Math.min(1, 2 * u - 1))) / (Math.PI / 2)) * hw0;
-          s = curved * (1 - flat) + u * flat;
-        } else {
-          // u 0 = กลางผ้า (ขอบหน้าอก) · u 1 = มุมผ้าที่ปม · หันขวา = อีกครึ่งของผืน
-          const phi = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * u)));
-          const curved = Math.max(0, 0.5 - phi / (2 * Math.PI * wrap));
-          s = curved * (1 - flat) + (0.5 - 0.5 * u) * flat;
-          if (mirror) s = 1 - s;
-        }
-        return [Math.max(0, Math.min(1, s)), t];
-      };
-      /** (s,t) → พิกเซลบนอาร์ตบอร์ด (ผืนพับใช้ครึ่งล่าง · ชั้นหลัง = ครึ่งบนกลับหัว) */
-      const srcOf = ([s, t]: [number, number]): Pt => {
-        const xs = W / 2 + (s - 0.5) * W * (1 - t);
-        const ys = !folded ? t * H : useBack ? H / 2 - (t * H) / 2 : H / 2 + (t * H) / 2;
-        return [xs * k, ys * k];
-      };
+    const render = (f: (typeof FRAMES)[number]): HTMLCanvasElement => {
+      const mirror = !!f.mirror;
       const drawImg = (c: CanvasRenderingContext2D, img: CanvasImageSource) => {
         c.save();
         if (mirror) {
@@ -247,50 +248,70 @@ export default function Bandana3D({
         c.drawImage(img, 0, 0, PW, PH);
         c.restore();
       };
-
       const cv = document.createElement("canvas");
       cv.width = PW;
       cv.height = PH;
       const ctx = cv.getContext("2d");
       if (!ctx) return cv;
-      drawImg(ctx, im[side ? "side" : "front"]);
+      drawImg(ctx, im[f.shot]);
 
-      // ลายบนผ้า: วาดลงแผ่นแยก → ตัดตาม mask ผ้า → multiply ทับรูป
-      const lay = document.createElement("canvas");
-      lay.width = PW;
-      lay.height = PH;
-      const lctx = lay.getContext("2d");
-      if (!lctx) return cv;
-      lctx.fillStyle = "#fff";
-      lctx.fillRect(0, 0, PW, PH);
-      const NU = 28;
-      const NV = 28;
-      for (let i = 0; i < NV; i++) {
-        // แถวสุดท้ายยุบเป็นจุด — หยุดก่อนนิดเดียว
-        const v0 = i / NV;
-        const v1 = Math.min((i + 1) / NV, 0.995);
-        for (let j = 0; j < NU; j++) {
-          const u0 = j / NU;
-          const u1 = (j + 1) / NU;
-          const d00 = coons(patch, u0, v0);
-          const d10 = coons(patch, u1, v0);
-          const d01 = coons(patch, u0, v1);
-          const d11 = coons(patch, u1, v1);
-          const s00 = srcOf(stOf(u0, v0));
-          const s10 = srcOf(stOf(u1, v0));
-          const s01 = srcOf(stOf(u0, v1));
-          const s11 = srcOf(stOf(u1, v1));
-          drawTri(lctx, sheet, [s00, s10, s11], [d00, d10, d11]);
-          drawTri(lctx, sheet, [s00, s11, s01], [d00, d11, d01]);
+      const base = PATCH[f.shot];
+      if (base) {
+        const mx = (p: Pt): Pt => (mirror ? [PW - p[0], p[1]] : p);
+        const patch: Patch = { T: base.T.map(mx), L: base.L.map(mx), R: base.R.map(mx) };
+        /**
+         * (u,v) ของผ้าในรูป → (s,t) บนผืน: ที่ความลึก t ผ้าคลุมมุม ±φ รอบคอ · ส่วนที่เห็นคือ [max(−φ, ψ−90), min(φ, ψ+90)]
+         * ตำแหน่งบนภาพ ∝ sin(θ − ψ) → กลับหา θ แล้ว s = 0.5 + 0.5·θ/φ · รูปกลับด้าน: u 0 อยู่ขวาของภาพ จึงใช้ 1 − u
+         */
+        const stOf = (u0: number, t: number): [number, number] => {
+          const u = mirror ? 1 - u0 : u0;
+          const phi = Math.max(1, thetaMax * (1 - t));
+          let a0 = Math.max(-phi, f.psi - 90);
+          let a1 = Math.min(phi, f.psi + 90);
+          if (a1 <= a0) a0 = a1 = Math.max(-phi, Math.min(phi, f.psi));
+          const sa = Math.sin((a0 - f.psi) * rad);
+          const sb = Math.sin((a1 - f.psi) * rad);
+          const theta = f.psi + Math.asin(Math.max(-1, Math.min(1, sa + u * (sb - sa)))) / rad;
+          return [Math.max(0, Math.min(1, 0.5 + (0.5 * theta) / phi)), t];
+        };
+        // ลายบนผ้า: วาดลงแผ่นแยก → ตัดตาม mask ผ้า → multiply ทับรูป
+        const lay = document.createElement("canvas");
+        lay.width = PW;
+        lay.height = PH;
+        const lctx = lay.getContext("2d");
+        if (lctx) {
+          lctx.fillStyle = "#fff";
+          lctx.fillRect(0, 0, PW, PH);
+          const NU = 28;
+          const NV = 28;
+          for (let i = 0; i < NV; i++) {
+            // แถวสุดท้ายยุบเป็นจุด — หยุดก่อนนิดเดียว
+            const v0 = i / NV;
+            const v1 = Math.min((i + 1) / NV, 0.995);
+            for (let j = 0; j < NU; j++) {
+              const u0 = j / NU;
+              const u1 = (j + 1) / NU;
+              const d00 = coons(patch, u0, v0);
+              const d10 = coons(patch, u1, v0);
+              const d01 = coons(patch, u0, v1);
+              const d11 = coons(patch, u1, v1);
+              const s00 = srcOf(stOf(u0, v0));
+              const s10 = srcOf(stOf(u1, v0));
+              const s01 = srcOf(stOf(u0, v1));
+              const s11 = srcOf(stOf(u1, v1));
+              drawTri(lctx, sheet, [s00, s10, s11], [d00, d10, d11]);
+              drawTri(lctx, sheet, [s00, s11, s01], [d00, d11, d01]);
+            }
+          }
+          lctx.globalCompositeOperation = "destination-in";
+          drawImg(lctx, im[`${f.shot}-mask`]);
+          ctx.globalCompositeOperation = "multiply";
+          ctx.drawImage(lay, 0, 0);
         }
       }
-      lctx.globalCompositeOperation = "destination-in";
-      drawImg(lctx, im[side ? "side-mask" : "front-mask"]);
-      ctx.globalCompositeOperation = "multiply";
-      ctx.drawImage(lay, 0, 0);
-
-      if (side) {
-        // 🎀 ปม + ชายผ้าท้ายทอย = ผ้ามุมผืน → ย้อมด้วยสีตรงมุมผ้าของลาย (ไม่แปะลายทั้งผืนบนปม)
+      const knot = im[`${f.shot}-knot`];
+      if (knot) {
+        // 🎀 ปม + ชายผ้า/แถบผ้าท้ายทอย = ผ้ามุมผืน → ย้อมสีมุมผ้าของลาย
         const kn = document.createElement("canvas");
         kn.width = PW;
         kn.height = PH;
@@ -299,17 +320,18 @@ export default function Bandana3D({
           kctx.fillStyle = tint;
           kctx.fillRect(0, 0, PW, PH);
           kctx.globalCompositeOperation = "destination-in";
-          drawImg(kctx, im["side-knot"]);
+          drawImg(kctx, knot);
+          ctx.globalCompositeOperation = "multiply";
           ctx.drawImage(kn, 0, 0);
         }
       }
       ctx.globalCompositeOperation = "source-over";
       return cv;
     };
-    frames.current = { left: render("left"), front: render("front"), right: render("right") };
+    frames.current = FRAMES.map(render);
   }, [status, inner, sheet, sheetMm, mock.style]);
 
-  // 🔁 วาดจอตามมุม: ผสมภาพมุมข้างเคียง + บีบแนวนอนรอบแกนกลาง (ให้รู้สึกหมุน) · หมุนโชว์ = แกว่งซ้าย↔ขวา
+  // 🔁 วาดจอตามมุม: ผสมสองเฟรมข้างเคียง + บีบแนวนอนช่วงกลาง (ให้รู้สึกหมุน) · หมุนโชว์ = หมุนวนต่อเนื่อง
   useEffect(() => {
     const cv = canvasRef.current;
     if (status !== "ready" || !cv) return;
@@ -319,8 +341,9 @@ export default function Bandana3D({
     cv.height = PH;
     let raf = 0;
     let last = performance.now();
-    let shown: BandanaView = "front";
+    let shown: BandanaView | "between" = "front";
     const smooth = (x: number) => x * x * (3 - 2 * x);
+    const norm = (d: number) => ((d % 360) + 360) % 360;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -331,32 +354,34 @@ export default function Bandana3D({
         if (Math.abs(d) < 0.3) {
           g.a = g.target;
           g.target = null;
-        } else g.a += d * Math.min(1, dt * 7);
-      } else if (g.spin && !g.dragging) {
-        g.a += g.dir * dt * 55;
-        if (g.a >= 90) (g.a = 90), (g.dir = -1);
-        if (g.a <= -90) (g.a = -90), (g.dir = 1);
-      }
+        } else g.a += d * Math.min(1, dt * 6);
+      } else if (g.spin && !g.dragging) g.a += dt * 50;
       const f = frames.current;
       if (!f) return;
-      const a = g.a;
-      const sideV: BandanaView = a < 0 ? "left" : "right";
-      const p = Math.min(1, Math.abs(a) / 90);
-      // ผสมช่วงกลาง 25–65% ของการหมุน (ปลายทั้งสองเป็นรูปจริงล้วน ไม่ซ้อนเงา)
-      const w = smooth(Math.max(0, Math.min(1, (p - 0.25) / 0.4)));
+      const a = norm(g.a);
+      // หาเฟรมก่อน/หลังมุมปัจจุบัน
+      let i = FRAMES.length - 1;
+      for (let j = 0; j < FRAMES.length; j++) if (FRAMES[j].deg <= a) i = j;
+      const j = (i + 1) % FRAMES.length;
+      const d0 = FRAMES[i].deg;
+      const d1 = j === 0 ? 360 : FRAMES[j].deg;
+      const p = (a - d0) / (d1 - d0);
+      // ผสมช่วงกลาง (ปลายทั้งสองเป็นรูปจริงล้วน ไม่ซ้อนเงา)
+      const w = smooth(Math.max(0, Math.min(1, (p - 0.2) / 0.6)));
+      const sq = 1 - 0.1 * Math.sin(Math.PI * p);
       ctx.clearRect(0, 0, PW, PH);
-      const put = (img: HTMLCanvasElement, alpha: number, sx: number) => {
+      const put = (img: HTMLCanvasElement, alpha: number) => {
         if (alpha <= 0.001) return;
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.translate(PW / 2, 0);
-        ctx.scale(sx, 1);
+        ctx.scale(sq, 1);
         ctx.drawImage(img, -PW / 2, 0);
         ctx.restore();
       };
-      put(f.front, 1 - w, 1 - 0.18 * p);
-      put(f[sideV], w, 0.82 + 0.18 * p);
-      const near: BandanaView = p < 0.5 ? "front" : sideV;
+      put(f[i], 1 - w);
+      put(f[j], w);
+      const near = (Object.entries(VIEW_DEG) as [BandanaView, number][]).find(([, d]) => Math.min(norm(a - d), norm(d - a)) < 12)?.[0] ?? "between";
       if (near !== shown) {
         shown = near;
         setView(near);
@@ -400,7 +425,11 @@ export default function Bandana3D({
         <div
           className="relative mx-3 h-[min(62vh,560px)] cursor-grab touch-none select-none overflow-hidden rounded-2xl bg-[radial-gradient(ellipse_at_50%_38%,#ffffff_0%,#f1f5f9_55%,#e2e8f0_100%)] ring-1 ring-stone-200/70 active:cursor-grabbing"
           onPointerDown={(e) => {
-            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            try {
+              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            } catch {
+              // pointer จำลอง/หลุดไปแล้ว — ลากต่อได้โดยไม่ capture
+            }
             drag.current = { x: e.clientX, a: ang.current.a };
             ang.current.target = null;
             ang.current.dragging = true;
@@ -408,8 +437,8 @@ export default function Bandana3D({
           onPointerMove={(e) => {
             const d = drag.current;
             if (!d) return;
-            // ลากขวา = หมุนให้หันขวา
-            ang.current.a = Math.max(-90, Math.min(90, d.a + (e.clientX - d.x) * 0.45));
+            // ลากขวา = น้องหันไปทางขวา (มุมลดลง)
+            ang.current.a = d.a - (e.clientX - d.x) * 0.5;
           }}
           onPointerUp={() => {
             drag.current = null;
@@ -436,28 +465,28 @@ export default function Bandana3D({
           <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-24px)] items-center gap-2 rounded-full bg-white/90 py-1.5 pl-1.5 pr-3.5 shadow-sm ring-1 ring-stone-200 backdrop-blur">
             <span className="whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[11px] font-extrabold text-white">🐶 {styleTh}</span>
             <span className="truncate text-xs font-bold text-stone-700">
-              {spin ? "หมุนโชว์" : BANDANA_VIEW_TH[view]}
+              {spin ? "หมุนโชว์รอบตัว" : view === "between" ? "มุมเฉียง" : BANDANA_VIEW_TH[view]}
               {inner && folded ? " · ชั้นหลัง" : ""}
             </span>
           </div>
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-stone-900/70 px-3.5 py-1.5 text-[11px] font-semibold text-white backdrop-blur">
-            ↔ ลากซ้าย-ขวา = หมุนดู
+            ↔ ลากซ้าย-ขวา = หมุนดูรอบตัว
           </div>
         </div>
 
         <div className="space-y-2.5 px-4 pb-4 pt-3">
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
             <span className="flex items-center rounded-full bg-stone-100 p-0.5 ring-1 ring-stone-200/70" role="radiogroup" aria-label="มุมมอง">
-              {(["left", "front", "right"] as BandanaView[]).map((v) => (
+              {(["left", "front", "right", "back"] as BandanaView[]).map((v) => (
                 <button
                   key={v}
                   type="button"
                   role="radio"
                   aria-checked={!spin && view === v}
                   onClick={() => goView(v)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
                 >
-                  {v === "front" ? "👁 ด้านหน้า" : v === "left" ? "⬅ หันซ้าย" : "หันขวา ➡"}
+                  {v === "front" ? "👁 ด้านหน้า" : v === "left" ? "⬅ หันซ้าย" : v === "right" ? "หันขวา ➡" : "↩ ด้านหลัง"}
                 </button>
               ))}
             </span>
@@ -470,7 +499,7 @@ export default function Bandana3D({
               }}
               className={`rounded-full px-3.5 py-1.5 text-xs font-extrabold ring-1 transition ${spin ? "bg-violet-600 text-white ring-violet-600 shadow-sm" : "bg-white text-violet-700 ring-violet-200 hover:bg-violet-50"}`}
             >
-              {spin ? "⏸ หยุดหมุน" : "🔄 หมุนโชว์"}
+              {spin ? "⏸ หยุดหมุน" : "🔄 หมุนโชว์รอบตัว"}
             </button>
             {folded && (
               <button
@@ -485,7 +514,7 @@ export default function Bandana3D({
           </div>
           <p className="text-center text-[11px] text-stone-400">
             {mock.style === "tie"
-              ? "ภาพจำลองโดยประมาณ — ลายวางบนผ้าในรูปตัวอย่าง ผ้าชั้นเดียวพิมพ์ด้านหน้า · หมุนดูได้ หันซ้าย–หน้า–หันขวา · สีจริงอาจต่างจากหน้าจอเล็กน้อย"
+              ? "ภาพจำลองโดยประมาณ — ลายวางบนผ้าในรูปตัวอย่าง ผ้าชั้นเดียวพิมพ์ด้านหน้า หมุนดูได้รอบตัว · สีจริงอาจต่างจากหน้าจอเล็กน้อย"
               : inner
                 ? "กำลังดูชั้นหลัง = ครึ่งบนของแบบ (กลับหัวตามการพับ) วางบนผ้าในรูปแทนชั้นหน้า · สีจริงอาจต่างจากหน้าจอเล็กน้อย"
                 : "ภาพจำลองโดยประมาณ — ผืนพับครึ่งตามเส้นประ ครึ่งล่างของแบบอยู่ด้านหน้า กด “ดูลายชั้นหลัง” เพื่อดูครึ่งบน · ปมในรูปเป็นภาพประกอบ · สีจริงอาจต่างจากหน้าจอเล็กน้อย"}

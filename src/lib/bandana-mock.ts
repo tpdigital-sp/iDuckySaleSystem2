@@ -9,12 +9,12 @@
  * ผืนข้าวหลามตัด: ครึ่งล่างของอาร์ตบอร์ด = ชั้นหน้า · ครึ่งบน = ชั้นหลัง (พับไปข้างหลัง ลายกลับหัวตามการพับ)
  *
  * ภาพ = รูปตุ๊กตาพุดเดิ้ลใส่ผ้าพันคอขาวของร้าน (public/mock/collar-animal · 23 ต.ค. 69 "นำภาพนี้ไปแทนที่ 3D เดิม")
- *   วางลายลูกค้าลงบนผ้าขาวในรูป มุม "ด้านหน้า" / "ด้านข้าง" (ดู components/Bandana3D)
+ *   วางลายลูกค้าลงบนผ้าขาวในรูป · ชุด 5 มุม (หน้า เฉียงซ้าย ข้าง หลัง เฉียงขวา) หมุนได้ครบรอบ (ดู components/Bandana3D)
  */
 
 export type BandanaStyle = "tie" | "button" | "strap";
-/** มุมที่มีรูป: หันซ้าย (รูปด้านข้างจริง) · หน้า · หันขวา (รูปด้านข้างกลับซ้าย-ขวา ลายไม่กลับ) — ลากหมุนไล่ระหว่างกัน */
-export type BandanaView = "left" | "front" | "right";
+/** ปุ่มมุมมอง — หน้า · หันซ้าย (เห็นข้างตัว จมูกชี้ซ้าย) · หลัง · หันขวา · ระหว่างนั้นมีรูปเฉียง (หมุนครบรอบ 360°) */
+export type BandanaView = "front" | "left" | "back" | "right";
 
 export interface BandanaMock {
   kind: "bandana";
@@ -30,8 +30,9 @@ export const BANDANA_STYLE_TH: Record<BandanaStyle, string> = {
 };
 
 export const BANDANA_VIEW_TH: Record<BandanaView, string> = {
-  left: "หันซ้าย",
   front: "ด้านหน้า",
+  left: "หันซ้าย",
+  back: "ด้านหลัง",
   right: "หันขวา",
 };
 
