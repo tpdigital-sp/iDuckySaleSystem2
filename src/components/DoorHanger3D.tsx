@@ -147,11 +147,11 @@ function flakeCanvas(tint: DoorHangerTint): HTMLCanvasElement {
     x.moveTo(0, r * 0.35);
     x.bezierCurveTo(-r * 1.1, -r * 0.35, -r * 0.45, -r * 1.05, 0, -r * 0.45);
     x.bezierCurveTo(r * 0.45, -r * 1.05, r * 1.1, -r * 0.35, 0, r * 0.35);
-    x.lineWidth = Math.max(1.2, r * 0.18);
+    x.lineWidth = Math.max(2, r * 0.15);
     x.stroke();
   };
   const snow = (r: number) => {
-    x.lineWidth = Math.max(1, r * 0.1);
+    x.lineWidth = Math.max(1.5, r * 0.08);
     x.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI / 3) * i;
@@ -223,36 +223,77 @@ function flakeCanvas(tint: DoorHangerTint): HTMLCanvasElement {
     scatter(480, hexFlake, [0.25, 0.55], flakeColor);
     return c;
   }
-  // 🌈 โฮโลแกรม — อนุภาคสีรุ้งตามลาย (film = ฟิล์มรุ้งล้วน มีประกายจาง ๆ)
+  // 🌈 โฮโลแกรม — วาดอนุภาคเป็น "ขาว" (มาสก์) · สีรุ้งมาจาก holoSheen ที่เลื่อนตามมุมกล้อง (ภาพตัวอย่าง: สีไล่ต่อเนื่องเป็นแถบ ไม่ใช่สุ่มทีละเม็ด)
+  //    ขนาด/ความแน่นเทียบภาพตัวอย่างร้าน (acrylic-colors/holo-*-v2.jpg) · film/rainbow = ฟิล์มทั้งแผ่น อนุภาคแค่ประกายจาง ๆ
+  const W = () => "#ffffff";
+  const ring = (r: number) => {
+    x.lineWidth = Math.max(1.2, r * 0.16);
+    x.beginPath();
+    x.arc(0, 0, r, 0, Math.PI * 2);
+    x.stroke();
+  };
+  const sparkle4 = (r: number) => {
+    x.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI / 4) * i;
+      const rr = i % 2 ? r * 0.18 : i % 4 ? r * 0.55 : r;
+      x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    x.closePath();
+    x.fill();
+  };
   switch (tint.pattern) {
     case "shards":
-      scatter(55, shard, [1.2, 3.2], () => rainbow(70), [0.45, 0.8]);
+      scatter(36, shard, [2, 5], W, [0.55, 0.9]);
+      scatter(200, dot, [0.05, 0.12], W, [0.3, 0.7]);
       break;
     case "dots":
-      scatter(700, dot, [0.25, 0.45], () => rainbow(65));
+      scatter(1500, hexFlake, [0.4, 0.65], W, [0.7, 1]);
       break;
     case "snow":
-      scatter(26, snow, [2, 4.5], () => rainbow(65));
-      scatter(30, heart, [0.8, 1.4], () => rainbow(60), [0.6, 0.9]);
+      scatter(4, snow, [6, 10], W);
+      scatter(14, ring, [0.8, 2.2], W, [0.6, 0.9]);
+      scatter(10, heart, [1.4, 2.4], W, [0.6, 0.9]);
       break;
     case "stars":
-      scatter(32, star, [1.2, 2.8], () => rainbow(65));
-      scatter(400, dot, [0.06, 0.14], () => "#ffffff", [0.4, 0.9]);
+      scatter(26, sparkle4, [1.2, 3.2], W);
+      scatter(30, star, [0.6, 1.4], W);
+      scatter(500, dot, [0.05, 0.1], W, [0.3, 0.8]);
       break;
     case "stardust":
-      scatter(1400, hexFlake, [0.15, 0.32], () => rainbow(62));
-      scatter(40, star, [0.5, 1], () => rainbow(65));
+      scatter(5200, hexFlake, [0.1, 0.2], W, [0.5, 1]);
+      scatter(10, star, [0.9, 1.5], W);
       break;
     case "dust":
-      scatter(2200, hexFlake, [0.1, 0.22], () => rainbow(60), [0.6, 1]);
+      scatter(6000, hexFlake, [0.07, 0.14], W, [0.5, 1]);
       break;
     case "hearts":
-      scatter(28, heart, [1.4, 2.8], () => rainbow(66));
-      scatter(300, dot, [0.06, 0.12], () => "#ffffff", [0.3, 0.8]);
+      scatter(4, heart, [7, 11], W);
+      scatter(10, heart, [1.6, 3], W, [0.5, 0.8]);
+      scatter(160, dot, [0.06, 0.14], W, [0.3, 0.8]);
       break;
     default:
-      scatter(260, dot, [0.05, 0.12], () => rainbow(80), [0.25, 0.6]);
+      scatter(140, dot, [0.05, 0.1], W, [0.2, 0.5]);
   }
+  return c;
+}
+
+/** 🌈 ช่วงสีโฮโลแกรม (แถบไล่ทแยง วนซ้ำ) — film = ฟิล์มเขียวน้ำทะเล-ม่วง (hologram-01) · อื่น ๆ = รุ้งเต็มวง */
+const SHEEN_MM = 70;
+function holoSheen(pattern?: string): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const x = c.getContext("2d");
+  if (!x) return c;
+  // ไล่ตามแกน x อย่างเดียว + สีหัว = สีท้าย → ปูซ้ำไม่เห็นรอยต่อ (เอียงทแยงด้วย texture.rotation)
+  const g = x.createLinearGradient(0, 0, 256, 0);
+  const stops =
+    pattern === "film"
+      ? ["#bff5ff", "#4fd6d8", "#2a9fb8", "#9b8cff", "#e9d6ff", "#4fd6d8", "#bff5ff"]
+      : ["#ff3b5c", "#ffb03b", "#f5f04a", "#3df59a", "#2fb8ff", "#7a5cff", "#ff4fd0", "#ff3b5c"];
+  stops.forEach((col, i) => g.addColorStop(i / (stops.length - 1), col));
+  x.fillStyle = g;
+  x.fillRect(0, 0, 256, 256);
   return c;
 }
 
@@ -466,6 +507,24 @@ export default function DoorHanger3D({
         body.castShadow = !clearBase;
         plate.add(body);
         // ✨ ชั้นเกล็ดกลางเนื้อแผ่นใส (กลิตเตอร์/โฮโลแกรม) — มองเห็นได้ทั้งสองด้าน ประกายตามแสง
+        // 🌈 โฮโลแกรม: แถบสีรุ้งเลื่อนตามมุมกล้อง (tick) — ใช้เป็นสีของอนุภาค + ฟิล์มเหลือบทั้งแผ่น
+        let sheenTex: InstanceType<typeof THREE.CanvasTexture> | null = null;
+        let filmMat: InstanceType<typeof THREE.MeshBasicMaterial> | null = null;
+        let filmBase = 0;
+        if (tint && holo) {
+          sheenTex = new THREE.CanvasTexture(holoSheen(tint.pattern));
+          sheenTex.colorSpace = THREE.SRGBColorSpace;
+          sheenTex.wrapS = sheenTex.wrapT = THREE.RepeatWrapping;
+          sheenTex.repeat.set(1 / SHEEN_MM, 1 / SHEEN_MM);
+          sheenTex.rotation = Math.PI / 5; // แถบสีเอียงทแยงแบบแผ่นโฮโลแกรมจริง
+          mats.push(sheenTex);
+          // ฟิล์ม: hologram-01/รุ้ง = ทั้งแผ่นเหลือบชัด (ภาพตัวอย่าง) · ลายอนุภาค = แค่เหลือบจาง ๆ
+          filmBase = tint.pattern === "rainbow" ? 0.55 : tint.pattern === "film" ? 0.42 : 0.1;
+          filmMat = m(new THREE.MeshBasicMaterial({ map: sheenTex, transparent: true, opacity: filmBase, depthWrite: false, side: THREE.DoubleSide }));
+          const film = new THREE.Mesh(g(new THREE.ShapeGeometry(shape, 32)), filmMat);
+          film.position.z = -T * 0.15;
+          plate.add(film);
+        }
         if (tint && tintIsClear(tint)) {
           const ft = flakeTex(tint);
           const flakes = new THREE.Mesh(
@@ -474,9 +533,11 @@ export default function DoorHanger3D({
               new THREE.MeshPhysicalMaterial({
                 map: ft,
                 // เรืองสีตัวเองนิดหน่อย — เกล็ดโลหะสะท้อนแต่ห้องสีเทา สีทอง/รุ้งจะซีด
-                emissiveMap: ft,
+                // โฮโลแกรม: เกล็ดเป็นมาสก์ขาว สีมาจากแถบรุ้ง (sheenTex · uv คนละชุดกับ map) → สีไล่ต่อเนื่องและเลื่อนเมื่อหมุน
+                emissiveMap: sheenTex ?? ft,
                 emissive: 0xffffff,
-                emissiveIntensity: 0.7,
+                emissiveIntensity: sheenTex ? 0.95 : 0.7,
+                ...(sheenTex ? { color: 0x9aa3ad } : {}),
                 transparent: true,
                 alphaTest: 0.08,
                 side: THREE.DoubleSide,
@@ -618,6 +679,11 @@ export default function DoorHanger3D({
           sun.position.z -= BASE_DIST * 0.25 * Math.sin(c.yaw);
           sun.target.position.copy(look);
           sun.target.updateMatrixWorld();
+          if (sheenTex) {
+            // 🌈 หมุน/เงย = แถบสีเลื่อน + ฟิล์มเหลือบแรงขึ้น-ลงตามมุม (ภาพตัวอย่างโฮโลแกรมเปลี่ยนสีตามมุมมอง)
+            sheenTex.offset.set(c.yaw * 0.32 + c.pitch * 0.4, c.yaw * 0.12);
+            if (filmMat) filmMat.opacity = filmBase * (0.55 + 0.45 * Math.abs(Math.sin(c.yaw * 1.4 + c.pitch * 2)));
+          }
           renderer.render(scene, camera);
         };
         raf = requestAnimationFrame(tick);

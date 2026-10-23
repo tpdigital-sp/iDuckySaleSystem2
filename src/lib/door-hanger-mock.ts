@@ -24,7 +24,7 @@ export type DoorHangerFinish = "solid" | "frost" | "mirror" | "glitter" | "spark
 export type DoorHangerFlake = "silver" | "gold" | "rainbow" | "base";
 
 /** ลายอนุภาคโฮโลแกรม */
-export type DoorHangerPattern = "film" | "shards" | "dots" | "snow" | "stars" | "dust" | "stardust" | "hearts";
+export type DoorHangerPattern = "film" | "rainbow" | "shards" | "dots" | "snow" | "stars" | "dust" | "stardust" | "hearts";
 
 export interface DoorHangerTint {
   /** ชื่อเฉดตามตัวเลือก "สีอะคริลิค" */
@@ -82,6 +82,7 @@ const TINTS: TintRow[] = [
   [/hologram-stardust/i, 0xffffff, "holo", { pattern: "stardust" }],
   [/hologram-dust/i, 0xffffff, "holo", { pattern: "dust" }],
   [/hologram-หัวใจ/i, 0xffffff, "holo", { pattern: "hearts" }],
+  [/hologram-รุ้ง/i, 0xffffff, "holo", { pattern: "rainbow" }],
   [/hologram|โฮโลแกรม/i, 0xffffff, "holo", { pattern: "film" }],
   [/กระจก/, 0xd5d9de, "mirror"],
   [/ใสขุ่น|C-01/i, 0xdfe2dc, "frost"],
