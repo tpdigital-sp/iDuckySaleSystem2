@@ -1,6 +1,7 @@
 // ภาพตัวอย่างจำลอง (mockup) ปลอกคอสัตว์เลี้ยง 3 เรท → วาด SVG → JPG →
 // อัปโหลด storage `product-images/products/collar-animal/` → ผูก priceRates[i].imageSrc
-// รันซ้ำได้ (อัปทับชื่อไฟล์เดิม + เขียน DB เฉพาะเมื่อค่ายังไม่ตรง)
+// รันซ้ำได้ (อัปทับชื่อไฟล์เดิม + เขียน DB เฉพาะเมื่อค่ายังไม่ตรง) · --dry = เรนเดอร์ดูก่อน ไม่อัป
+// เรทตัวแทน "… (ตัวแทน)" ผูกภาพเดียวกับเรทปลีก · แบบผูก v2 = ลายเป็ด (23 ต.ค. 69)
 import { readFileSync } from "node:fs";
 import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
@@ -99,6 +100,28 @@ const printPattern = (cx) => `
   <text x="${cx}" y="472" font-size="44" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="6">MOCHI</text>
 </g>`;
 
+// 🦆 ลายเป็ดบนผ้า (ภาพแบบผูก · เจ้าของร้านสั่ง 23 ต.ค. 69 "ภาพที่ 1 ช่วยออกแบบให้ใหม่หน่อย ให้มีลายเป็ด")
+const duck = (x, y, s, flip = false) => `
+<g transform="translate(${x},${y}) scale(${flip ? -s : s},${s})">
+  <ellipse cx="2" cy="10" rx="27" ry="19" fill="#ffd43b" stroke="#e9a800" stroke-width="2"/>
+  <path d="M 24 2 Q 38 -6 34 10 Q 30 16 22 14 Z" fill="#ffd43b" stroke="#e9a800" stroke-width="2"/>
+  <circle cx="-14" cy="-14" r="15" fill="#ffd43b" stroke="#e9a800" stroke-width="2"/>
+  <path d="M -27 -12 Q -40 -11 -41 -6 Q -36 -3 -26 -6 Z" fill="#ff8c2b"/>
+  <circle cx="-18" cy="-17" r="2.8" fill="#1d3b41"/>
+  <circle cx="-9" cy="-9" r="3.2" fill="#ff9fb0" opacity="0.8"/>
+  <path d="M -2 6 Q 10 0 18 10 Q 8 18 -2 12 Z" fill="#f5bd00"/>
+</g>`;
+
+const duckPattern = (cx) => `
+<g font-family="${FONT}">
+  ${duck(cx - 290, 470, 0.98)}${duck(cx - 165, 466, 0.86)}${duck(cx + 165, 466, 0.86, true)}${duck(cx + 290, 470, 0.98, true)}
+  <g fill="#fff" opacity="0.95">
+    <circle cx="${cx - 228}" cy="424" r="5"/><circle cx="${cx - 108}" cy="500" r="5"/>
+    <circle cx="${cx + 108}" cy="424" r="5"/><circle cx="${cx + 228}" cy="500" r="5"/>
+  </g>
+  <text x="${cx}" y="472" font-size="44" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="6">MOCHI</text>
+</g>`;
+
 const page = (body) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
 ${defs}
 <rect width="1200" height="900" fill="url(#bg)"/>
@@ -117,7 +140,7 @@ const band1 = `
   <path d="M 214 432 Q 600 385 986 432" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="14 10" stroke-linecap="round" opacity="0.9"/>
   <path d="M 214 496 Q 600 543 986 496" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="14 10" stroke-linecap="round" opacity="0.9"/>
 </g>
-${printPattern(600)}`;
+${duckPattern(600)}`;
 
 const svg1 = page(`
 ${header(1, "ปลอกคอ แบบผูก", "สกรีน 1 ด้าน · ผ้า 1 ชิ้น · เย็บม้วนริมขอบ")}
@@ -205,10 +228,20 @@ const BUCKET = "product-images";
 const DIR = `products/${PRODUCT_ID}`;
 // จับคู่ด้วย label เรทจริงใน DB → ชื่อไฟล์ตามเนื้อหาภาพ (ไม่ใช่ลำดับ)
 const jobs = [
-  { rateLabel: "ปลอกคอ แบบผูก", file: "rate-tie-mock-v1.jpg", svg: svg1 },
+  { rateLabel: "ปลอกคอ แบบผูก", file: "rate-tie-mock-v2.jpg", svg: svg1 },
   { rateLabel: "ปลอกคอ แบบติดกระดุม", file: "rate-button-mock-v1.jpg", svg: svg2 },
   { rateLabel: "ปลอกคอ แบบใส่กับสาย", file: "rate-strap-mock-v1.jpg", svg: svg3 },
 ];
+
+// --dry = เขียน JPG ลง $TMPDIR/collar-rate-mock/ ให้ดูก่อน ไม่อัป ไม่แตะ DB
+if (process.argv.includes("--dry")) {
+  const out = `${process.env.TMPDIR ?? "/tmp"}/collar-rate-mock/`;
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  mkdirSync(out, { recursive: true });
+  for (const j of jobs) writeFileSync(out + j.file, await sharp(Buffer.from(j.svg), { density: 96 }).jpeg({ quality: 88 }).toBuffer());
+  console.log("dry-run →", out);
+  process.exit(0);
+}
 
 const urls = {};
 for (const j of jobs) {
@@ -225,17 +258,19 @@ for (const j of jobs) {
 const { data: row, error: readErr } = await sb.from("products").select("data").eq("id", PRODUCT_ID).single();
 if (readErr) die(readErr.message);
 const data = row.data;
-if (!Array.isArray(data.priceRates) || data.priceRates.length !== 3) die(`priceRates ไม่ใช่ 3 เรทตามคาด (${data.priceRates?.length})`);
+if (!Array.isArray(data.priceRates) || !data.priceRates.length) die("ไม่มี priceRates");
 
+// เรทตัวแทน "… (ตัวแทน)" ใช้ภาพเดียวกับเรทปลีก
+const baseLabel = (l) => l.replace(/\s*\(ตัวแทน\)$/, "");
 let changed = false;
 for (const r of data.priceRates) {
-  const url = urls[r.label];
+  const url = urls[baseLabel(r.label)];
   if (!url) die(`ไม่รู้จักเรท "${r.label}" — label ใน DB เปลี่ยนไปจากที่สคริปต์รู้จัก`);
   if (r.imageSrc !== url) { r.imageSrc = url; changed = true; }
 }
 
 if (!changed) {
-  console.log("• imageSrc ตรงอยู่แล้วทั้ง 3 เรท ไม่ต้องเขียน DB");
+  console.log("• imageSrc ตรงอยู่แล้วทุกเรท ไม่ต้องเขียน DB");
 } else {
   data.savedAt = new Date().toISOString();
   const { data: upd, error: updErr } = await sb.from("products").update({ data }).eq("id", PRODUCT_ID).select("data");
@@ -245,9 +280,8 @@ if (!changed) {
 
 // อ่านกลับมาเทียบ — อย่าเชื่อว่าไม่มี error = สำเร็จ
 const { data: back } = await sb.from("products").select("data").eq("id", PRODUCT_ID).single();
-for (const j of jobs) {
-  const r = (back.data.priceRates || []).find((x) => x.label === j.rateLabel);
-  if (r?.imageSrc !== urls[j.rateLabel]) die(`อ่านกลับไม่ตรง: ${j.rateLabel} → ${r?.imageSrc}`);
-  console.log("✓ ผูกแล้ว", j.rateLabel, "→", urls[j.rateLabel]);
+for (const r of back.data.priceRates || []) {
+  if (r.imageSrc !== urls[baseLabel(r.label)]) die(`อ่านกลับไม่ตรง: ${r.label} → ${r.imageSrc}`);
+  console.log("✓ ผูกแล้ว", r.label, "→", r.imageSrc.split("/").pop());
 }
 console.log("เสร็จ — หน้าสินค้าแคช 5 นาที เปิดด้วย ?v=<เลขใหม่> เพื่อดูผลทันที");
