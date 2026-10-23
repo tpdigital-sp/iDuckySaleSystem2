@@ -11,15 +11,32 @@ export type DoorHangerView = "front" | "right" | "left" | "back";
 /** เนื้อวัสดุ (กลุ่ม "ชนิดวัสดุ") — clear = มองทะลุได้ */
 export type DoorHangerMaterial = "mdf" | "acrylic-clear" | "acrylic-white" | "acrylic-color" | "paper" | "pet-clear" | "pet-white";
 
-/** ผิวอะคริลิคสีพิเศษ — solid = สีทึบเงา · frost = ใสขุ่น · glitter = กากเพชร · mirror = กระจก · holo = โฮโลแกรม */
-export type DoorHangerFinish = "solid" | "frost" | "glitter" | "mirror" | "holo";
+/**
+ * ผิวอะคริลิคสีพิเศษ (ดูจากภาพตัวอย่าง acrylic-colors/*-v2.jpg ของตัวเลือก "สีอะคริลิค")
+ *   solid   = สีทึบเงา · frost = ใสขุ่น (C-01) · mirror = กระจก
+ *   glitter = กากเพชรแน่นทึบ (G-silver/rosegold/red/purple)
+ *   sparkle = อะคริลิคใส + เกล็ดกลิตเตอร์โปรย (กลิตเตอร์-เงิน/ทอง/รุ้ง)
+ *   holo    = อะคริลิคใส + ฟิล์ม/อนุภาคโฮโลแกรมสีรุ้ง ลายตาม pattern (hologram-*)
+ */
+export type DoorHangerFinish = "solid" | "frost" | "mirror" | "glitter" | "sparkle" | "holo";
+
+/** สีเกล็ด: silver/gold = โทนเดียว · rainbow = สุ่มสีรุ้ง · base = ตามสีพื้น (กากเพชรทึบ) */
+export type DoorHangerFlake = "silver" | "gold" | "rainbow" | "base";
+
+/** ลายอนุภาคโฮโลแกรม */
+export type DoorHangerPattern = "film" | "shards" | "dots" | "snow" | "stars" | "dust" | "stardust" | "hearts";
 
 export interface DoorHangerTint {
   /** ชื่อเฉดตามตัวเลือก "สีอะคริลิค" */
   name: string;
   color: number;
   finish: DoorHangerFinish;
+  flake?: DoorHangerFlake;
+  pattern?: DoorHangerPattern;
 }
+
+/** พื้นเป็นอะคริลิคใส (มองทะลุ + พิมพ์รองขาว) */
+export const tintIsClear = (t?: DoorHangerTint) => t?.finish === "sparkle" || t?.finish === "holo";
 
 export interface DoorHangerMock {
   kind: "doorhanger";
@@ -45,51 +62,62 @@ export const DOOR_HANGER_MAT: Record<DoorHangerMaterial, { t: number; clear: boo
 };
 
 /**
- * เฉด → สี/ผิว (ค่าประมาณจากชื่อเฉด · ข้อแรกที่ตรงชนะ — ชื่อเจาะจงต้องมาก่อนชื่อกว้าง เช่น "ส้มแดง" ก่อน "ส้ม" · "กุหลาบแดง" ก่อน "แดง")
+ * เฉด → สี/ผิว — สีทึบเก็บจากภาพตัวอย่างของร้าน (ค่ากลางมุมซ้ายล่างของแผ่น) · ข้อแรกที่ตรงชนะ
+ * (ชื่อเจาะจงต้องมาก่อนชื่อกว้าง เช่น "ส้มแดง" ก่อน "ส้ม" · "กุหลาบแดง" ก่อน "แดง")
+ * ⚠️ OR / OR-02 ของร้านเป็นโทนพีช ไม่ใช่ส้มสด · W ถ่ายออกม่วงอ่อน ใช้ขาวจริงแทน
  */
-const TINTS: [RegExp, number, DoorHangerFinish][] = [
-  [/กากเพชร.*เงิน|กลิ[ตท]เตอร์.*เงิน/, 0xd8dce2, "glitter"],
-  [/กากเพชร.*โรสโกลด์/, 0xe7b0a0, "glitter"],
-  [/กากเพชร.*แดง/, 0xc8202f, "glitter"],
-  [/กากเพชร.*ม่วง/, 0x8a4fc4, "glitter"],
-  [/กลิ[ตท]เตอร์.*ทอง/, 0xd9b54a, "glitter"],
-  [/กลิ[ตท]เตอร์.*รุ้ง/, 0xe6e0f2, "holo"],
-  [/hologram|โฮโลแกรม/i, 0xdfe3ea, "holo"],
+type TintRow = [RegExp, number, DoorHangerFinish, Partial<Pick<DoorHangerTint, "flake" | "pattern">>?];
+const TINTS: TintRow[] = [
+  [/กากเพชร.*เงิน/, 0xaca8b1, "glitter", { flake: "base" }],
+  [/กากเพชร.*โรสโกลด์/, 0x8a6a62, "glitter", { flake: "base" }],
+  [/กากเพชร.*แดง/, 0xc8101f, "glitter", { flake: "base" }],
+  [/กากเพชร.*ม่วง/, 0x5a3866, "glitter", { flake: "base" }],
+  [/กลิ[ตท]เตอร์.*เงิน/, 0xffffff, "sparkle", { flake: "silver" }],
+  [/กลิ[ตท]เตอร์.*ทอง/, 0xffffff, "sparkle", { flake: "gold" }],
+  [/กลิ[ตท]เตอร์.*รุ้ง/, 0xffffff, "sparkle", { flake: "rainbow" }],
+  [/hologram-0?2/i, 0xffffff, "holo", { pattern: "shards" }],
+  [/hologram-จุด/i, 0xffffff, "holo", { pattern: "dots" }],
+  [/hologram-หิมะ/i, 0xffffff, "holo", { pattern: "snow" }],
+  [/hologram-ดาว/i, 0xffffff, "holo", { pattern: "stars" }],
+  [/hologram-stardust/i, 0xffffff, "holo", { pattern: "stardust" }],
+  [/hologram-dust/i, 0xffffff, "holo", { pattern: "dust" }],
+  [/hologram-หัวใจ/i, 0xffffff, "holo", { pattern: "hearts" }],
+  [/hologram|โฮโลแกรม/i, 0xffffff, "holo", { pattern: "film" }],
   [/กระจก/, 0xd5d9de, "mirror"],
-  [/ใสขุ่น|C-01/i, 0xeef2f4, "frost"],
-  [/ส้มแดง/, 0xf2542d, "solid"],
-  [/ส้มอ่อน|OR-02/, 0xffb36b, "solid"],
-  [/ส้ม/, 0xff8a1f, "solid"],
-  [/กุหลาบแดง/, 0xb3122e, "solid"],
-  [/กุหลาบชมพู/, 0xe8578d, "solid"],
-  [/ไข่แดง/, 0xffb000, "solid"],
-  [/แดง/, 0xd9202b, "solid"],
-  [/ชมพู/, 0xf6a8c8, "solid"],
-  [/เหลืองเข้ม/, 0xf2b705, "solid"],
-  [/เลมอน/, 0xfff35a, "solid"],
-  [/มัสตาร์ด/, 0xd9a514, "solid"],
-  [/เหลือง/, 0xffe14a, "solid"],
-  [/ทอง/, 0xc9a227, "solid"],
-  [/เทามุก/, 0xc4c6c9, "solid"],
-  [/เทา/, 0x8e9399, "solid"],
-  [/หญ้าเขียว/, 0x4caf3c, "solid"],
-  [/แอปเปิ้ลเขียว/, 0x8fd14f, "solid"],
-  [/เขียว/, 0x2fae5b, "solid"],
-  [/ท้องฟ้า/, 0x5fb7ec, "solid"],
-  [/น้ำเงิน/, 0x1f3f9b, "solid"],
-  [/ฟ้า/, 0x7cc4ea, "solid"],
-  [/ม่วง/, 0x7b4bb3, "solid"],
-  [/น้ำตาล/, 0x7a4a2a, "solid"],
-  [/ดำ/, 0x1d1d1f, "solid"],
-  [/ครีม/, 0xf3e6c8, "solid"],
-  [/ขาว/, 0xf7f7f5, "solid"],
+  [/ใสขุ่น|C-01/i, 0xdfe2dc, "frost"],
+  [/ส้มแดง/, 0xfe4602, "solid"],
+  [/ส้มอ่อน|OR-02/, 0xf7c5af, "solid"],
+  [/ส้ม/, 0xeeb394, "solid"],
+  [/กุหลาบแดง/, 0xa3087e, "solid"],
+  [/กุหลาบชมพู/, 0xffa289, "solid"],
+  [/ไข่แดง/, 0xff9700, "solid"],
+  [/แดง/, 0xd93032, "solid"],
+  [/ชมพู/, 0xeaacb9, "solid"],
+  [/เหลืองเข้ม/, 0xfe9901, "solid"],
+  [/เลมอน/, 0xf7cd01, "solid"],
+  [/มัสตาร์ด/, 0xeab601, "solid"],
+  [/เหลือง/, 0xf7d840, "solid"],
+  [/ทอง/, 0xc49126, "solid"],
+  [/เทามุก/, 0x949b99, "solid"],
+  [/เทา/, 0x4b4f4d, "solid"],
+  [/หญ้าเขียว/, 0x01ab6c, "solid"],
+  [/แอปเปิ้ลเขียว/, 0x4fc952, "solid"],
+  [/เขียว/, 0x37d3a0, "solid"],
+  [/ท้องฟ้า/, 0x0090f9, "solid"],
+  [/น้ำเงิน/, 0x2252fe, "solid"],
+  [/ฟ้า/, 0x94b9e9, "solid"],
+  [/ม่วง/, 0xab18e4, "solid"],
+  [/น้ำตาล/, 0x55110a, "solid"],
+  [/ดำ/, 0x2f302e, "solid"],
+  [/ครีม/, 0xe2e4c5, "solid"],
+  [/ขาว/, 0xf4f4f6, "solid"],
 ];
 
 export function doorHangerTintOf(name: string): DoorHangerTint | undefined {
   const n = name.trim();
   if (!n) return undefined;
   const hit = TINTS.find(([re]) => re.test(n));
-  return hit ? { name: n, color: hit[1], finish: hit[2] } : undefined;
+  return hit ? { name: n, color: hit[1], finish: hit[2], ...(hit[3] ?? {}) } : undefined;
 }
 
 export function doorHangerMockFrom(sel: Record<string, string | undefined>): DoorHangerMock {

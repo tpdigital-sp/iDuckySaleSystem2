@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { TemplateCurve } from "@/lib/design-templates";
-import { DOOR_HANGER_MAT, DOOR_HANGER_VIEW_TH, type DoorHangerMock, type DoorHangerView } from "@/lib/door-hanger-mock";
+import { DOOR_HANGER_MAT, DOOR_HANGER_VIEW_TH, tintIsClear, type DoorHangerMock, type DoorHangerTint, type DoorHangerView } from "@/lib/door-hanger-mock";
 
 /** มุมกล้อง (เรเดียน รอบแกนตั้ง) — ด้านหน้าป้ายหันไป +z */
 const VIEW_YAW: Record<DoorHangerView, number> = { front: 0, right: Math.PI / 2, left: -Math.PI / 2, back: Math.PI };
@@ -106,6 +106,154 @@ function hangSlot(cut: TemplateCurve[], W: number, H: number): { x: number; y: n
       if (hasAbove(x, y) && hasRight(x, y)) best = { x, y, r: v };
     }
   return best.r > 0 ? best : { x: W / 2, y: H * 0.15, r: 15 };
+}
+
+/** ขนาดลายเกล็ด 1 แผ่นปู (มม.) — ปูซ้ำทั้งแผ่น · ความละเอียด 10 px/มม. */
+const FLAKE_MM = 50;
+const FLAKE_PX = 512;
+
+/**
+ * ✨ เกล็ด/อนุภาคในเนื้ออะคริลิค (ตามภาพตัวอย่างของร้าน)
+ * sparkle/holo = พื้นโปร่ง (วางเป็นชั้นกลางแผ่นใส) · glitter = พื้นสีเฉด + เกล็ดแน่นสีอ่อน/เข้มกว่าพื้น
+ */
+function flakeCanvas(tint: DoorHangerTint): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = c.height = FLAKE_PX;
+  const x = c.getContext("2d");
+  if (!x) return c;
+  const R = Math.random;
+  const mm = FLAKE_PX / FLAKE_MM;
+  const hex = `#${tint.color.toString(16).padStart(6, "0")}`;
+  const rainbow = (l = 62) => `hsl(${Math.floor(R() * 360)},95%,${l}%)`;
+  const flakeColor = () =>
+    tint.flake === "gold"
+      ? `hsl(${40 + R() * 10},${85 + R() * 15}%,${45 + R() * 20}%)`
+      : tint.flake === "silver"
+        ? `hsl(220,6%,${70 + R() * 28}%)`
+        : rainbow();
+  // ทรงอนุภาค (กลางที่ 0,0 · ขนาด r px)
+  const star = (r: number) => {
+    x.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI / 5) * i - Math.PI / 2;
+      const rr = i % 2 ? r * 0.45 : r;
+      x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    x.closePath();
+    x.fill();
+  };
+  const heart = (r: number) => {
+    x.beginPath();
+    x.moveTo(0, r * 0.35);
+    x.bezierCurveTo(-r * 1.1, -r * 0.35, -r * 0.45, -r * 1.05, 0, -r * 0.45);
+    x.bezierCurveTo(r * 0.45, -r * 1.05, r * 1.1, -r * 0.35, 0, r * 0.35);
+    x.lineWidth = Math.max(1.2, r * 0.18);
+    x.stroke();
+  };
+  const snow = (r: number) => {
+    x.lineWidth = Math.max(1, r * 0.1);
+    x.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i;
+      const ex = Math.cos(a) * r;
+      const ey = Math.sin(a) * r;
+      x.moveTo(0, 0);
+      x.lineTo(ex, ey);
+      for (const f of [0.55, 0.8]) {
+        const bx = Math.cos(a) * r * f;
+        const by = Math.sin(a) * r * f;
+        x.moveTo(bx, by);
+        x.lineTo(bx + Math.cos(a + 0.7) * r * 0.25, by + Math.sin(a + 0.7) * r * 0.25);
+        x.moveTo(bx, by);
+        x.lineTo(bx + Math.cos(a - 0.7) * r * 0.25, by + Math.sin(a - 0.7) * r * 0.25);
+      }
+    }
+    x.stroke();
+  };
+  const shard = (r: number) => {
+    x.beginPath();
+    const n = 3 + Math.floor(R() * 3);
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + R() * 0.8;
+      const rr = r * (0.5 + R() * 0.6);
+      x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    x.closePath();
+    x.fill();
+  };
+  const scatter = (n: number, draw: (r: number) => void, rMm: [number, number], color: () => string, alpha: [number, number] = [0.7, 1]) => {
+    for (let i = 0; i < n; i++) {
+      const r = (rMm[0] + R() * (rMm[1] - rMm[0])) * mm;
+      x.save();
+      x.translate(R() * FLAKE_PX, R() * FLAKE_PX);
+      x.rotate(R() * Math.PI * 2);
+      x.globalAlpha = alpha[0] + R() * (alpha[1] - alpha[0]);
+      x.fillStyle = x.strokeStyle = color();
+      draw(r);
+      x.restore();
+    }
+  };
+  const dot = (r: number) => {
+    x.beginPath();
+    x.arc(0, 0, r, 0, Math.PI * 2);
+    x.fill();
+  };
+  const hexFlake = (r: number) => {
+    x.beginPath();
+    for (let i = 0; i < 6; i++) x.lineTo(Math.cos((Math.PI / 3) * i) * r, Math.sin((Math.PI / 3) * i) * r);
+    x.closePath();
+    x.fill();
+  };
+  if (tint.finish === "glitter") {
+    // กากเพชรแน่น — พื้นเฉด + เกล็ดหกเหลี่ยมอ่อน/เข้มกว่าพื้นเต็มแผ่น
+    x.fillStyle = hex;
+    x.fillRect(0, 0, FLAKE_PX, FLAKE_PX);
+    const shade = (k: number) => {
+      const r0 = (tint.color >> 16) & 255;
+      const g0 = (tint.color >> 8) & 255;
+      const b0 = tint.color & 255;
+      const f = (v: number) => Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k));
+      return `rgb(${f(r0)},${f(g0)},${f(b0)})`;
+    };
+    scatter(5200, hexFlake, [0.12, 0.3], () => shade(R() * 1.3 - 0.45), [0.8, 1]);
+    return c;
+  }
+  if (tint.finish === "sparkle") {
+    // กลิตเตอร์โปรยในเนื้อใส — เกล็ดเล็ก ๆ ห่าง ๆ (ภาพตัวอย่าง: ใสมองทะลุ เห็นเกล็ดกระจาย)
+    scatter(480, hexFlake, [0.25, 0.55], flakeColor);
+    return c;
+  }
+  // 🌈 โฮโลแกรม — อนุภาคสีรุ้งตามลาย (film = ฟิล์มรุ้งล้วน มีประกายจาง ๆ)
+  switch (tint.pattern) {
+    case "shards":
+      scatter(55, shard, [1.2, 3.2], () => rainbow(70), [0.45, 0.8]);
+      break;
+    case "dots":
+      scatter(700, dot, [0.25, 0.45], () => rainbow(65));
+      break;
+    case "snow":
+      scatter(26, snow, [2, 4.5], () => rainbow(65));
+      scatter(30, heart, [0.8, 1.4], () => rainbow(60), [0.6, 0.9]);
+      break;
+    case "stars":
+      scatter(32, star, [1.2, 2.8], () => rainbow(65));
+      scatter(400, dot, [0.06, 0.14], () => "#ffffff", [0.4, 0.9]);
+      break;
+    case "stardust":
+      scatter(1400, hexFlake, [0.15, 0.32], () => rainbow(62));
+      scatter(40, star, [0.5, 1], () => rainbow(65));
+      break;
+    case "dust":
+      scatter(2200, hexFlake, [0.1, 0.22], () => rainbow(60), [0.6, 1]);
+      break;
+    case "hearts":
+      scatter(28, heart, [1.4, 2.8], () => rainbow(66));
+      scatter(300, dot, [0.06, 0.12], () => "#ffffff", [0.3, 0.8]);
+      break;
+    default:
+      scatter(260, dot, [0.05, 0.12], () => rainbow(80), [0.25, 0.6]);
+  }
+  return c;
 }
 
 export default function DoorHanger3D({
@@ -265,71 +413,87 @@ export default function DoorHanger3D({
         const T = mat.t;
         const plate = new THREE.Group();
         const shape = toShape(cutCs);
-        // 🎨 อะคริลิคสีพิเศษ — เนื้อแผ่นตามเฉดที่เลือก (หลังงานสกรีน 1 ด้าน = สีอะคริลิค · เจ้าของร้านแจ้ง 23 ต.ค. 69)
+        // 🎨 อะคริลิคสีพิเศษ — เนื้อแผ่นตามเฉด/ผิวที่เลือก (เจ้าของร้านแจ้ง 23 ต.ค. 69 "แสดงสี และวัสดุตามอะคริลิคที่เลือก
+        //    เช่น กลิสเตอร์ทอง จะเป็นอคริลิคใสผสมกลิสเตอร์ทอง") · sparkle/holo = แผ่นใส + ชั้นเกล็ดกลางแผ่น
         const tint = mock.tint;
+        const clearBase = mat.clear || tintIsClear(tint);
+        const flakeTex = (t: DoorHangerTint) => {
+          const tx = new THREE.CanvasTexture(flakeCanvas(t));
+          tx.colorSpace = THREE.SRGBColorSpace;
+          tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+          tx.repeat.set(1 / FLAKE_MM, 1 / FLAKE_MM); // uv ของแผ่น = มม.
+          tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          mats.push(tx);
+          return tx;
+        };
         const tintMat = () => {
-          if (!tint) return null;
+          if (!tint || tintIsClear(tint)) return null;
           const base = { color: tint.color, metalness: 0, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05 };
-          if (tint.finish === "frost") return m(new THREE.MeshPhysicalMaterial({ ...base, roughness: 0.6, clearcoat: 0.3, transparent: true, opacity: 0.82 }));
+          if (tint.finish === "frost") return m(new THREE.MeshPhysicalMaterial({ ...base, roughness: 0.55, clearcoat: 0.4, transparent: true, opacity: 0.88 }));
           if (tint.finish === "mirror") return m(new THREE.MeshPhysicalMaterial({ ...base, metalness: 1, roughness: 0.04, envMapIntensity: 1.6 }));
-          if (tint.finish === "holo")
-            return m(
-              new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.75, roughness: 0.18, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [120, 900], envMapIntensity: 1.5 }),
-            );
-          if (tint.finish === "glitter") {
-            // กากเพชร = จุดสว่างสุ่มบนพื้นเฉด (uv ของแผ่น = มม. → ปูซ้ำทุก 40 มม.)
-            const c = document.createElement("canvas");
-            c.width = c.height = 256;
-            const x = c.getContext("2d");
-            if (x) {
-              x.fillStyle = `#${tint.color.toString(16).padStart(6, "0")}`;
-              x.fillRect(0, 0, 256, 256);
-              for (let i = 0; i < 900; i++) {
-                x.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.7})`;
-                x.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 1.8, 1 + Math.random() * 1.8);
-              }
-            }
-            const t = new THREE.CanvasTexture(c);
-            t.colorSpace = THREE.SRGBColorSpace;
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-            t.repeat.set(1 / 40, 1 / 40);
-            mats.push(t);
-            return m(new THREE.MeshPhysicalMaterial({ ...base, color: 0xffffff, map: t, metalness: 0.45, roughness: 0.3 }));
-          }
+          if (tint.finish === "glitter") return m(new THREE.MeshPhysicalMaterial({ ...base, color: 0xffffff, map: flakeTex(tint), metalness: 0.55, roughness: 0.32 }));
           return m(new THREE.MeshPhysicalMaterial(base));
         };
         const tinted = tintMat();
+        const holo = tint?.finish === "holo";
         const faceMat = tinted
           ? tinted
-          : mat.clear
+          : clearBase
           ? m(
               new THREE.MeshPhysicalMaterial({
                 color: 0xe6f4f8,
                 roughness: 0.05,
-                metalness: 0,
+                metalness: holo ? 0.25 : 0,
                 clearcoat: 1,
                 clearcoatRoughness: 0.04,
                 envMapIntensity: 1.8,
                 transparent: true,
-                opacity: 0.35,
+                // มีชั้นเกล็ดให้เห็นแผ่นอยู่แล้ว → ผิวใสบางลง ไม่กลบสีเกล็ด
+                opacity: holo ? 0.2 : tintIsClear(tint) ? 0.12 : 0.35,
                 depthWrite: false,
+                // 🌈 ฟิล์มโฮโลแกรม — ผิวเหลือบสีรุ้งเปลี่ยนตามมุมมอง
+                ...(holo ? { iridescence: 1, iridescenceIOR: 1.8, iridescenceThicknessRange: [150, 950] as [number, number] } : {}),
               }),
             )
           : m(new THREE.MeshPhysicalMaterial({ color: mat.face, roughness: mock.material === "mdf" ? 0.3 : 0.45, metalness: 0, clearcoat: mock.material.startsWith("acrylic") || mock.material === "mdf" ? 0.6 : 0.1 }));
         const edgeMat = tinted
           ? tinted
-          : mat.clear
-          ? m(new THREE.MeshPhysicalMaterial({ color: mat.edge, roughness: 0.1, transparent: true, opacity: 0.9, clearcoat: 1 }))
+          : clearBase
+          ? m(new THREE.MeshPhysicalMaterial({ color: DOOR_HANGER_MAT["acrylic-clear"].edge, roughness: 0.1, transparent: true, opacity: 0.9, clearcoat: 1 }))
           : m(new THREE.MeshStandardMaterial({ color: mat.edge, roughness: mock.material === "mdf" ? 0.9 : 0.5 }));
         const body = new THREE.Mesh(g(new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false, curveSegments: 32 })), [faceMat, edgeMat]);
         body.position.z = -T / 2;
-        body.castShadow = !mat.clear;
+        body.castShadow = !clearBase;
         plate.add(body);
+        // ✨ ชั้นเกล็ดกลางเนื้อแผ่นใส (กลิตเตอร์/โฮโลแกรม) — มองเห็นได้ทั้งสองด้าน ประกายตามแสง
+        if (tint && tintIsClear(tint)) {
+          const ft = flakeTex(tint);
+          const flakes = new THREE.Mesh(
+            g(new THREE.ShapeGeometry(shape, 32)),
+            m(
+              new THREE.MeshPhysicalMaterial({
+                map: ft,
+                // เรืองสีตัวเองนิดหน่อย — เกล็ดโลหะสะท้อนแต่ห้องสีเทา สีทอง/รุ้งจะซีด
+                emissiveMap: ft,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.7,
+                transparent: true,
+                alphaTest: 0.08,
+                side: THREE.DoubleSide,
+                metalness: 0.45,
+                roughness: 0.3,
+                envMapIntensity: 2,
+                ...(holo ? { iridescence: 1, iridescenceIOR: 1.8, iridescenceThicknessRange: [150, 950] as [number, number] } : {}),
+              }),
+            ),
+          );
+          plate.add(flakes);
+        }
         const printTex = (src: HTMLCanvasElement, cs: TemplateCurve[]) => texOf(clipCanvas(src, cs, k));
         // ลายด้านหน้า · อะคริลิคใสงานด้านเดียว: มีรองขาวใต้ลาย → หลังเห็นขาวตามทรงลาย (ไม่ใช่ลายกลับด้าน)
         //   PET ใสงานด้านเดียว: ไม่มีรองขาว → เห็นลายกลับด้านทะลุมาจากหลังแผ่น (DoubleSide)
-        const whiteBack = mock.material === "acrylic-clear" && !backSheet;
-        const seeThrough = mat.clear && !backSheet && !whiteBack;
+        const whiteBack = (mock.material === "acrylic-clear" || tintIsClear(tint)) && !backSheet;
+        const seeThrough = clearBase && !backSheet && !whiteBack;
         const frontPrint = clipCanvas(sheet, cutCs, k);
         const front = new THREE.Mesh(
           g(new THREE.ShapeGeometry(shape, 32)),
@@ -631,7 +795,7 @@ export default function DoorHanger3D({
           <p className="text-center text-[11px] text-stone-400">
             ภาพจำลองโดยประมาณ — ป้ายทรงตามเทมเพลต แขวนบนก้านมือจับประตู{backSheet
               ? " · ด้านหลังเป็นลายที่ 2"
-              : mock.material === "acrylic-clear"
+              : mock.material === "acrylic-clear" || tintIsClear(mock.tint)
                 ? " · ด้านหลังเห็นสีขาวตามทรงลาย (พิมพ์รองขาว)"
                 : mat.clear
                   ? " · วัสดุใส ด้านหลังเห็นลายกลับด้าน"
