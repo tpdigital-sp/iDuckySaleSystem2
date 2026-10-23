@@ -412,7 +412,7 @@ type Draft = {
   /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
   studioOn: boolean;
   /** ☕🧊 พรีวิว 3D ในจอออกแบบ (Product.calendarStudio.mock3d) — "" = ไม่มี · "mug" = แก้วมัค 11 oz */
-  mock3d: "" | "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag";
+  mock3d: "" | "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas";
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
@@ -5677,6 +5677,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                               ? "ป้ายไวนิลตั้งจากฐานอลูมิเนียม + เสาหลัง + รางหนีบบน · โชว์เฉพาะช่วงกลางผืน (บน/ล่าง 10 ซม. อยู่ในรางหนีบ/ฐาน)"
                               : draft.mock3d === "bag"
                                 ? "ถุงซิปล็อกโฮโลแกรม ลายครอปตามเส้นตัดของเทมเพลต (ขอบถุง) · ส่วนไม่มีหมึกเห็นโฮโลแกรม · สีแถบซิปอ่านจากกลุ่ม “สีซิป”"
+                                : draft.mock3d === "canvas"
+                                  ? "ผ้าใบขึงโครงไม้สน ลายพิมพ์อ้อมขอบข้าง 3 ซม. + ขอบเย็บ 3 ซม. พับไปด้านหลัง (โซนตามไฟล์เทมเพลตร้าน) · ขนาดหน้างานอ่านจากค่า “ขนาด” ที่ลูกค้าเลือก"
                               : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
               </p>
             </div>
@@ -5695,6 +5697,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               <option value="xstand">🪧 ป้ายขาตั้ง X-Stand (ขึงโครง X)</option>
               <option value="rollup">🪧 ป้ายขาตั้ง Roll UP (ฐานม้วน)</option>
               <option value="bag">🌈 กระเป๋าโฮโลแกรม (ถุงซิปล็อก)</option>
+              <option value="canvas">🖼 กรอบรูปแคนวาส (ผ้าใบขึงโครงไม้)</option>
             </select>
           </div>
         )}

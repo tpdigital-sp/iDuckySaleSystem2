@@ -91,12 +91,14 @@ import Mug3D, { MugBodyChip } from "@/components/Mug3D";
 import Stand3D from "@/components/Stand3D";
 import Cushion3D from "@/components/Cushion3D";
 import Folder3D from "@/components/Folder3D";
+import CanvasFrame3D from "@/components/CanvasFrame3D";
 import Banner3D from "@/components/Banner3D";
 import Bag3D from "@/components/Bag3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import type { StandMock } from "@/lib/stand-mock";
 import type { CushionMock } from "@/lib/cushion-mock";
 import type { FolderMock } from "@/lib/folder-mock";
+import type { CanvasMock } from "@/lib/canvas-mock";
 import type { BannerMock } from "@/lib/banner-mock";
 import type { BagMock } from "@/lib/bag-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
@@ -237,7 +239,7 @@ interface Props {
    * ☕🧊 พรีวิว 3D แก้วมัค (Product.calendarStudio.mock3d = "mug" · เจ้าของร้านสั่ง 16 ต.ค. 69) — ปุ่ม "ดูแบบ 3D" บนแถบบน
    * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
    */
-  mock3d?: MugMock | StandMock | CushionMock | FolderMock | BannerMock | BagMock;
+  mock3d?: MugMock | StandMock | CushionMock | FolderMock | BannerMock | BagMock | CanvasMock;
   /**
    * 🧑‍💼 โหมดแอดมิน (สั่งแทนลูกค้า · เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC): กด ใช้แบบนี้/ใส่ตะกร้า ได้ทั้งที่ยังไม่ใส่รูป
    * — ถามยืนยันก่อน 1 ครั้ง แล้วทำไฟล์ช่องว่าง (ช่องรูปที่ว่างไม่พิมพ์) · สเปคติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกรู้ว่าต้องรอรูปจากลูกค้า
@@ -6114,6 +6116,8 @@ export default function CalendarStudio({
                       ? "ดูแบบ 3D — ป้ายไวนิลบนขาตั้งจริง หมุนดูได้รอบตัว"
                       : mock3d?.kind === "bag"
                       ? "ดูแบบ 3D — ลายบนถุงซิปล็อกโฮโลแกรมจริง หมุนดูหน้า-หลังได้รอบตัว"
+                      : mock3d?.kind === "canvas"
+                      ? "ดูแบบ 3D — ลายบนผ้าใบขึงโครงไม้จริง อ้อมขอบข้าง หมุนดูหน้า-ข้าง-หลังได้รอบตัว"
                       : mock3d
                       ? "ดูแบบ 3D — ลายบนที่ตั้งโทรศัพท์จริง หมุนดูได้รอบตัว"
                       : "ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
@@ -7313,6 +7317,10 @@ export default function CalendarStudio({
         {/* 🌈 กระเป๋าโฮโลแกรม (22 ต.ค. 69) — ลายครอปตามเส้นตัด (ขอบถุง) บนถุงโฮโลแกรม + แถบซิปตามสีซิป */}
         {mug3d && mug3d !== "loading" && mock3d?.kind === "bag" && (
           <Bag3D key={`bag-${mock3d.zip}`} sheet={mug3d} sheetMm={{ w: W, h: H }} cut={tplCut} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
+        )}
+        {mug3d && mug3d !== "loading" && mock3d?.kind === "canvas" && (
+          // 🖼🪵 กรอบรูปแคนวาส (23 ต.ค. 69) — ผืน = หน้างาน + ขอบข้าง + ขอบเย็บ → ผ้าใบขึงโครงไม้ ลายอ้อมขอบ ด้านหลังเห็นโครง
+          <CanvasFrame3D key={`canvas-${mock3d.label ?? ""}`} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
         )}
         {mug3d && mug3d !== "loading" && mock3d?.kind === "banner" && (
           <Banner3D key={`banner-${mock3d.stand}`} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
