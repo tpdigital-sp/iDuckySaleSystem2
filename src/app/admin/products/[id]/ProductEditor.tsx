@@ -412,7 +412,7 @@ type Draft = {
   /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
   studioOn: boolean;
   /** ☕🧊 พรีวิว 3D ในจอออกแบบ (Product.calendarStudio.mock3d) — "" = ไม่มี · "mug" = แก้วมัค 11 oz */
-  mock3d: "" | "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas";
+  mock3d: "" | "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas" | "doorhanger";
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
@@ -5679,6 +5679,8 @@ export default function ProductEditor({ product }: { product: Product }) {
                                 ? "ถุงซิปล็อกโฮโลแกรม ลายครอปตามเส้นตัดของเทมเพลต (ขอบถุง) · ส่วนไม่มีหมึกเห็นโฮโลแกรม · สีแถบซิปอ่านจากกลุ่ม “สีซิป”"
                                 : draft.mock3d === "canvas"
                                   ? "ผ้าใบขึงโครงไม้สน ลายพิมพ์อ้อมขอบข้าง 3 ซม. + ขอบเย็บ 3 ซม. พับไปด้านหลัง (โซนตามไฟล์เทมเพลตร้าน) · ขนาดหน้างานอ่านจากค่า “ขนาด” ที่ลูกค้าเลือก"
+                                  : draft.mock3d === "doorhanger"
+                                    ? "ป้ายทรงตามเส้นไดคัทของเทมเพลต แขวนบนก้านมือจับประตู · ความหนา/ความใสอ่านจาก “ชนิดวัสดุ” · งาน 2 ด้านเห็นลายหลังด้วย"
                               : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
               </p>
             </div>
@@ -5698,6 +5700,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               <option value="rollup">🪧 ป้ายขาตั้ง Roll UP (ฐานม้วน)</option>
               <option value="bag">🌈 กระเป๋าโฮโลแกรม (ถุงซิปล็อก)</option>
               <option value="canvas">🖼 กรอบรูปแคนวาส (ผ้าใบขึงโครงไม้)</option>
+              <option value="doorhanger">🚪 ป้ายแขวนประตู (แขวนบนมือจับ)</option>
             </select>
           </div>
         )}

@@ -1,0 +1,576 @@
+"use client";
+
+/**
+ * 🚪🧊 โมเดล 3D ป้ายแขวนประตู — ลายที่ลูกค้าออกแบบอยู่บนแผ่นจริง แขวนบนก้านมือจับประตู
+ * (เจ้าของร้านสั่ง 23 ต.ค. 69 "เพิ่ม 3D ให้หน่อย")
+ *
+ * three.js โหลดตอนกดปุ่มเท่านั้น (import()) · โครงเดียวกับ Stand3D (RoomEnvironment · ไฟตามกล้อง · ลาก=หมุน · ล้อ/หยิก=ซูม)
+ * แผ่น = ทรงตามเส้นไดคัทของเทมเพลต (cut · มม. พิกัดอาร์ตบอร์ด) อัดหนาตามวัสดุ (lib/door-hanger-mock) · ลายครอปตามเส้นนั้นเหมือนไฟล์งาน
+ *   ด้านหลัง: งาน 2 ด้าน = ลายหน้า 2 (backSheet · วาดในพิกัด "มองจากด้านหลัง" แบบไกด์กลับข้างของจอออกแบบ)
+ *             ด้านเดียว = เนื้อวัสดุเปล่า · วัสดุใสมองทะลุเห็นลายด้านหน้ากลับด้าน
+ * ช่องแขวน = จุดว่างที่ไกลขอบชิ้นงานที่สุดในครึ่งบน (ทรงตะขอ = วงใน · แคปซูล = รูกลม) → ก้านมือจับลอดช่องนั้น
+ * ประตูซ่อนเองตอนกล้องอ้อมไปด้านหลัง จะได้เห็นด้านหลังป้าย
+ */
+
+import { useEffect, useRef, useState } from "react";
+import type { TemplateCurve } from "@/lib/design-templates";
+import { DOOR_HANGER_MAT, DOOR_HANGER_VIEW_TH, type DoorHangerMock, type DoorHangerView } from "@/lib/door-hanger-mock";
+
+/** มุมกล้อง (เรเดียน รอบแกนตั้ง) — ด้านหน้าป้ายหันไป +z */
+const VIEW_YAW: Record<DoorHangerView, number> = { front: 0, right: Math.PI / 2, left: -Math.PI / 2, back: Math.PI };
+
+/** ก้านมือจับ (มม.) — รัศมีก้าน · ยาวจากหน้าประตู · ระยะหน้าประตูถึงหลังป้าย */
+const NECK_R = 8;
+const NECK_L = 58;
+const PLATE_Z = 18;
+
+const tracePath = (ctx: CanvasRenderingContext2D, cut: TemplateCurve[], k: number) => {
+  ctx.beginPath();
+  for (const c of cut) {
+    ctx.moveTo(c.s[0] * k, c.s[1] * k);
+    for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+    ctx.closePath();
+  }
+};
+
+/** ครอปลายตามเส้นไดคัท (นอกเส้น = โปร่ง) · k = พิกเซล/มม. */
+function clipCanvas(src: HTMLCanvasElement, cut: TemplateCurve[], k: number): HTMLCanvasElement {
+  const out = document.createElement("canvas");
+  out.width = src.width;
+  out.height = src.height;
+  const ctx = out.getContext("2d");
+  if (!ctx) return src;
+  ctx.drawImage(src, 0, 0);
+  ctx.globalCompositeOperation = "destination-in";
+  tracePath(ctx, cut, k);
+  ctx.fillStyle = "#000";
+  ctx.fill("evenodd");
+  return out;
+}
+
+/** เส้นไดคัทกลับซ้าย-ขวา (มุมมองจากด้านหลัง) */
+const mirrorCut = (cut: TemplateCurve[], W: number): TemplateCurve[] =>
+  cut.map((c) => ({ s: [W - c.s[0], c.s[1]], g: c.g.map((g) => [W - g[0], g[1], W - g[2], g[3], W - g[4], g[5]] as TemplateCurve["g"][number]) }));
+
+/**
+ * ช่องแขวน — ระยะห่างถึงเนื้อชิ้นงาน (distance transform 1 ช่อง/มม.) สูงสุดในครึ่งบน ที่มีเนื้อชิ้นงานอยู่ทั้งเหนือและขวา
+ * คืน { x, y (มม. y ลง), r } · หาไม่เจอ = กลางบน
+ */
+function hangSlot(cut: TemplateCurve[], W: number, H: number): { x: number; y: number; r: number } {
+  const cw = Math.ceil(W);
+  const ch = Math.ceil(H);
+  const cv = document.createElement("canvas");
+  cv.width = cw;
+  cv.height = ch;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return { x: W / 2, y: H * 0.15, r: 15 };
+  tracePath(ctx, cut, 1);
+  ctx.fillStyle = "#000";
+  ctx.fill("evenodd");
+  const a = ctx.getImageData(0, 0, cw, ch).data;
+  const solid = (x: number, y: number) => a[(y * cw + x) * 4 + 3] > 127;
+  const INF = 1e9;
+  const d = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) d[y * cw + x] = solid(x, y) ? 0 : INF;
+  const D2 = Math.SQRT2;
+  for (let y = 0; y < ch; y++)
+    for (let x = 0; x < cw; x++) {
+      const i = y * cw + x;
+      if (x > 0) d[i] = Math.min(d[i], d[i - 1] + 1);
+      if (y > 0) d[i] = Math.min(d[i], d[i - cw] + 1);
+      if (x > 0 && y > 0) d[i] = Math.min(d[i], d[i - cw - 1] + D2);
+      if (x < cw - 1 && y > 0) d[i] = Math.min(d[i], d[i - cw + 1] + D2);
+    }
+  for (let y = ch - 1; y >= 0; y--)
+    for (let x = cw - 1; x >= 0; x--) {
+      const i = y * cw + x;
+      if (x < cw - 1) d[i] = Math.min(d[i], d[i + 1] + 1);
+      if (y < ch - 1) d[i] = Math.min(d[i], d[i + cw] + 1);
+      if (x < cw - 1 && y < ch - 1) d[i] = Math.min(d[i], d[i + cw + 1] + D2);
+      if (x > 0 && y < ch - 1) d[i] = Math.min(d[i], d[i + cw - 1] + D2);
+    }
+  const hasAbove = (x: number, y: number) => {
+    for (let yy = y - 1; yy >= 0; yy--) if (solid(x, yy)) return true;
+    return false;
+  };
+  const hasRight = (x: number, y: number) => {
+    for (let xx = x + 1; xx < cw; xx++) if (solid(xx, y)) return true;
+    return false;
+  };
+  let best = { x: W / 2, y: H * 0.15, r: 0 };
+  for (let y = 1; y < ch * 0.5; y++)
+    for (let x = 1; x < cw - 1; x++) {
+      const v = d[y * cw + x];
+      if (v === 0 || v >= INF || v <= best.r) continue;
+      if (hasAbove(x, y) && hasRight(x, y)) best = { x, y, r: v };
+    }
+  return best.r > 0 ? best : { x: W / 2, y: H * 0.15, r: 15 };
+}
+
+export default function DoorHanger3D({
+  sheet,
+  backSheet,
+  sheetMm,
+  cut,
+  mock,
+  title,
+  onClose,
+}: {
+  /** ลายด้านหน้าทั้งอาร์ตบอร์ด (วาดจากตัววาดจริงของจอออกแบบ · ยังไม่ครอป) */
+  sheet: HTMLCanvasElement;
+  /** ลายด้านหลัง (งาน 2 ด้าน · พิกัดมองจากด้านหลัง) · null = ด้านเดียว */
+  backSheet?: HTMLCanvasElement | null;
+  sheetMm: { w: number; h: number };
+  /** เส้นไดคัทของเทมเพลต (มม. พิกัดอาร์ตบอร์ด) · ไม่มี = ใช้ทั้งสี่เหลี่ยม */
+  cut?: TemplateCurve[] | null;
+  mock: DoorHangerMock;
+  title: string;
+  onClose: () => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [spin, setSpin] = useState(false);
+  const [view, setView] = useState<DoorHangerView>("front");
+  const [zoom, setZoomState] = useState(1);
+  const clampZ = (z: number) => Math.max(0.6, Math.min(3, z));
+  const cam = useRef({ yaw: -0.35, pitch: 0.12, zoom: 1, targetYaw: null as number | null, spin: false, dragging: false });
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const pts = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d: number; z: number } | null>(null);
+  const mat = DOOR_HANGER_MAT[mock.material];
+  const setZoom = (fn: (z: number) => number) => {
+    const z = clampZ(fn(cam.current.zoom));
+    cam.current.zoom = z;
+    setZoomState(z);
+  };
+  const goView = (v: DoorHangerView) => {
+    setView(v);
+    const cur = cam.current.yaw;
+    let t = VIEW_YAW[v];
+    while (t - cur > Math.PI) t -= 2 * Math.PI;
+    while (t - cur < -Math.PI) t += 2 * Math.PI;
+    cam.current.targetYaw = t;
+    cam.current.spin = false;
+    setSpin(false);
+  };
+  useEffect(() => {
+    cam.current.spin = spin;
+  }, [spin]);
+
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    let dead = false;
+    let cleanup: (() => void) | null = null;
+    (async () => {
+      try {
+        const THREE = await import("three");
+        const { RoomEnvironment } = await import("three/examples/jsm/environments/RoomEnvironment.js");
+        if (dead) return;
+        const W = sheetMm.w;
+        const H = sheetMm.h;
+        const k = sheet.width / W;
+        const cutCs: TemplateCurve[] = cut?.length ? cut : [{ s: [0, 0], g: [[W, 0, W, 0, W, 0], [W, H, W, H, W, H], [0, H, 0, H, 0, H], [0, 0, 0, 0, 0, 0]] }];
+        const backCs = mirrorCut(cutCs, W);
+        const slot = hangSlot(cutCs, W, H);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.NeutralToneMapping;
+        renderer.toneMappingExposure = 1;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFShadowMap;
+        renderer.domElement.style.width = "100%";
+        renderer.domElement.style.height = "100%";
+        renderer.domElement.style.display = "block";
+        box.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const room = new RoomEnvironment();
+        const envTex = pmrem.fromScene(room, 0.04).texture;
+        room.dispose();
+        scene.environment = envTex;
+        scene.environmentIntensity = 0.45;
+
+        const camera = new THREE.PerspectiveCamera(28, 1, 1, 6000);
+        const BASE_DIST = Math.max(W, H) * 2.7;
+
+        const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        const sh = Math.max(W, H) * 1.4;
+        sun.shadow.camera.left = sun.shadow.camera.bottom = -sh;
+        sun.shadow.camera.right = sun.shadow.camera.top = sh;
+        sun.shadow.camera.near = 10;
+        sun.shadow.camera.far = 3000;
+        sun.shadow.bias = -0.0005;
+        sun.shadow.radius = 4;
+        scene.add(sun);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+
+        const geos: { dispose(): void }[] = [];
+        const mats: { dispose(): void }[] = [];
+        const g = <T extends { dispose(): void }>(x: T) => (geos.push(x), x);
+        const m = <T extends { dispose(): void }>(x: T) => (mats.push(x), x);
+
+        /** ทรงแผ่นจากเส้นไดคัท (y กลับด้าน: อาร์ตบอร์ด y ลง → โลก y ขึ้น) · เส้นใหญ่สุด = ขอบนอก ที่เหลือ = รู */
+        const toShape = (cs: TemplateCurve[]) => {
+          const area = (c: TemplateCurve) => {
+            let s = 0;
+            let px = c.s[0];
+            let py = c.s[1];
+            for (const sg of c.g) {
+              s += px * sg[5] - sg[4] * py;
+              px = sg[4];
+              py = sg[5];
+            }
+            return Math.abs(s / 2);
+          };
+          const sorted = [...cs].sort((a, b) => area(b) - area(a));
+          const path = (c: TemplateCurve, p: InstanceType<typeof THREE.Path>) => {
+            p.moveTo(c.s[0], H - c.s[1]);
+            for (const sg of c.g) p.bezierCurveTo(sg[0], H - sg[1], sg[2], H - sg[3], sg[4], H - sg[5]);
+            p.closePath();
+          };
+          const shape = new THREE.Shape();
+          path(sorted[0], shape);
+          for (const h of sorted.slice(1)) {
+            const hp = new THREE.Path();
+            path(h, hp);
+            shape.holes.push(hp);
+          }
+          return shape;
+        };
+        const printTex = (src: HTMLCanvasElement, cs: TemplateCurve[]) => {
+          const t = new THREE.CanvasTexture(clipCanvas(src, cs, k));
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          t.repeat.set(1 / W, 1 / H); // uv ของ ShapeGeometry = พิกัดมม.
+          mats.push(t);
+          return t;
+        };
+
+        // ── แผ่นป้าย ──
+        const T = mat.t;
+        const plate = new THREE.Group();
+        const shape = toShape(cutCs);
+        const faceMat = mat.clear
+          ? m(
+              new THREE.MeshPhysicalMaterial({
+                color: 0xe6f4f8,
+                roughness: 0.05,
+                metalness: 0,
+                clearcoat: 1,
+                clearcoatRoughness: 0.04,
+                envMapIntensity: 1.8,
+                transparent: true,
+                opacity: 0.35,
+                depthWrite: false,
+              }),
+            )
+          : m(new THREE.MeshPhysicalMaterial({ color: mat.face, roughness: mock.material === "mdf" ? 0.75 : 0.45, metalness: 0, clearcoat: mock.material.startsWith("acrylic") ? 0.6 : 0.1 }));
+        const edgeMat = mat.clear
+          ? m(new THREE.MeshPhysicalMaterial({ color: mat.edge, roughness: 0.1, transparent: true, opacity: 0.9, clearcoat: 1 }))
+          : m(new THREE.MeshStandardMaterial({ color: mat.edge, roughness: mock.material === "mdf" ? 0.9 : 0.5 }));
+        const body = new THREE.Mesh(g(new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false, curveSegments: 32 })), [faceMat, edgeMat]);
+        body.position.z = -T / 2;
+        body.castShadow = !mat.clear;
+        plate.add(body);
+        // ลายด้านหน้า · วัสดุใสงานด้านเดียว: เห็นลายกลับด้านทะลุมาจากหลังแผ่น (DoubleSide)
+        const seeThrough = mat.clear && !backSheet;
+        const front = new THREE.Mesh(
+          g(new THREE.ShapeGeometry(shape, 32)),
+          m(
+            new THREE.MeshPhysicalMaterial({
+              map: printTex(sheet, cutCs),
+              roughness: 0.45,
+              metalness: 0,
+              clearcoat: 0.3,
+              clearcoatRoughness: 0.35,
+              transparent: true,
+              alphaTest: 0.02,
+              side: seeThrough ? THREE.DoubleSide : THREE.FrontSide,
+            }),
+          ),
+        );
+        front.position.z = T / 2 + 0.05;
+        front.castShadow = true;
+        plate.add(front);
+        // ลายด้านหลัง (งาน 2 ด้าน) — ผืนวาดแบบมองจากหลัง (x กลับ) → หมุน 180° รอบแกนตั้งแล้วเลื่อนกลับ x = W
+        if (backSheet) {
+          const bshape = toShape(backCs);
+          const backMesh = new THREE.Mesh(
+            g(new THREE.ShapeGeometry(bshape, 32)),
+            m(new THREE.MeshPhysicalMaterial({ map: printTex(backSheet, backCs), roughness: 0.45, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, transparent: true, alphaTest: 0.02 })),
+          );
+          backMesh.rotation.y = Math.PI;
+          backMesh.position.set(W, 0, -T / 2 - 0.05);
+          plate.add(backMesh);
+        }
+        // แขวน: ขอบบนของช่องพาดก้านมือจับ (ก้านอยู่ที่ x=0, y=0)
+        const slotTopUp = H - slot.y + slot.r;
+        plate.position.set(-slot.x, NECK_R - slotTopUp, PLATE_Z + T / 2);
+        scene.add(plate);
+
+        // ── มือจับก้านโยก + ประตู ──
+        const metal = m(new THREE.MeshPhysicalMaterial({ color: 0xc9ced4, metalness: 1, roughness: 0.28, clearcoat: 0.4 }));
+        const neck = new THREE.Mesh(g(new THREE.CylinderGeometry(NECK_R, NECK_R, NECK_L, 40)), metal);
+        neck.rotation.x = Math.PI / 2;
+        neck.position.z = NECK_L / 2;
+        neck.castShadow = true;
+        scene.add(neck);
+        const leverL = Math.max(110, W * 1.05);
+        const lever = new THREE.Mesh(g(new THREE.CapsuleGeometry(NECK_R * 0.95, leverL, 8, 24)), metal);
+        lever.rotation.z = Math.PI / 2;
+        lever.position.set(leverL / 2 - NECK_R, 0, NECK_L);
+        lever.castShadow = true;
+        scene.add(lever);
+        const door = new THREE.Group();
+        const DW = Math.max(W * 12, 1200);
+        const DH = H * 4.5;
+        const panel = new THREE.Mesh(
+          g(new THREE.BoxGeometry(DW, DH, 40)),
+          m(new THREE.MeshStandardMaterial({ color: 0xefe7db, roughness: 0.85 })),
+        );
+        panel.position.set(-W * 0.4, -H * 1.2, -20);
+        panel.receiveShadow = true;
+        door.add(panel);
+        const rose = new THREE.Mesh(g(new THREE.CylinderGeometry(26, 28, 10, 48)), metal);
+        rose.rotation.x = Math.PI / 2;
+        rose.position.z = 5;
+        rose.castShadow = true;
+        door.add(rose);
+        scene.add(door);
+
+        // กล้องมองกลางแผ่นป้าย
+        const look = new THREE.Vector3(plate.position.x + W / 2, plate.position.y + H / 2, PLATE_Z);
+
+        const place = () => {
+          const w = box.clientWidth || 1;
+          const h = box.clientHeight || 1;
+          renderer.setSize(w, h, false);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+        };
+        place();
+        const ro = new ResizeObserver(place);
+        ro.observe(box);
+
+        let raf = 0;
+        let last = performance.now();
+        const tick = (now: number) => {
+          raf = requestAnimationFrame(tick);
+          const dt = Math.min(0.05, (now - last) / 1000);
+          last = now;
+          const c = cam.current;
+          if (c.targetYaw != null) {
+            const d = c.targetYaw - c.yaw;
+            if (Math.abs(d) < 0.004) {
+              c.yaw = c.targetYaw;
+              c.targetYaw = null;
+            } else c.yaw += d * Math.min(1, dt * 7);
+          } else if (c.spin && !c.dragging) c.yaw += dt * 0.55;
+          const dist = BASE_DIST / c.zoom;
+          const cp = Math.cos(c.pitch);
+          camera.position.set(look.x + dist * Math.sin(c.yaw) * cp, look.y + dist * Math.sin(c.pitch), look.z + dist * Math.cos(c.yaw) * cp);
+          camera.lookAt(look);
+          // อ้อมไปด้านหลัง → ซ่อนประตู (ไม่งั้นบังด้านหลังป้าย)
+          door.visible = Math.cos(c.yaw) > -0.05;
+          sun.position.set(camera.position.x, 0, camera.position.z).normalize().multiplyScalar(BASE_DIST * 1.1);
+          sun.position.y = look.y + BASE_DIST * 0.8;
+          sun.position.x += BASE_DIST * 0.25 * Math.cos(c.yaw);
+          sun.position.z -= BASE_DIST * 0.25 * Math.sin(c.yaw);
+          sun.target.position.copy(look);
+          sun.target.updateMatrixWorld();
+          renderer.render(scene, camera);
+        };
+        raf = requestAnimationFrame(tick);
+        setStatus("ready");
+
+        cleanup = () => {
+          cancelAnimationFrame(raf);
+          ro.disconnect();
+          geos.forEach((x) => x.dispose());
+          mats.forEach((x) => x.dispose());
+          envTex.dispose();
+          pmrem.dispose();
+          renderer.dispose();
+          renderer.forceContextLoss();
+          renderer.domElement.remove();
+        };
+        if (dead) cleanup();
+      } catch (e) {
+        console.error("DoorHanger3D", e);
+        if (!dead) setStatus("error");
+      }
+    })();
+    return () => {
+      dead = true;
+      cleanup?.();
+    };
+    // สร้างฉากครั้งเดียวต่อการเปิด
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-900/55 p-3 backdrop-blur-[2px]" onClick={onClose}>
+      <div className="relative flex w-full max-w-3xl flex-col rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-5 py-3.5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-lg shadow-[0_4px_12px_rgba(139,92,246,.35)]">
+            🚪
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="flex min-w-0 items-center gap-2 text-[15px] font-extrabold leading-tight text-stone-800">
+              <span className="shrink-0">ดูแบบ 3D</span>
+              <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-extrabold text-stone-700 ring-1 ring-sky-200">
+                <span className="truncate">ป้ายแขวนประตู</span>
+                <span className="truncate text-stone-400">· {mat.th}</span>
+              </span>
+            </p>
+            <p className="truncate text-xs text-stone-500">
+              {title} · ลาย {Math.round(sheetMm.w) / 10}×{Math.round(sheetMm.h) / 10} ซม.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full text-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            aria-label="ปิด"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div
+          ref={boxRef}
+          className="relative mx-3 h-[min(60vh,520px)] cursor-grab touch-none select-none overflow-hidden rounded-2xl bg-[radial-gradient(ellipse_at_50%_38%,#ffffff_0%,#f1f5f9_55%,#e2e8f0_100%)] ring-1 ring-stone-200/70 active:cursor-grabbing"
+          onWheel={(e) => setZoom((z) => z * Math.exp(-e.deltaY * 0.0015))}
+          onDoubleClick={() => setZoom((z) => (z > 1.05 ? 1 : 2))}
+          onPointerDown={(e) => {
+            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pts.current.size === 2) {
+              const [a, b] = [...pts.current.values()];
+              pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.current.zoom };
+              drag.current = null;
+              cam.current.dragging = false;
+              return;
+            }
+            drag.current = { x: e.clientX, y: e.clientY, yaw: cam.current.yaw, pitch: cam.current.pitch };
+            cam.current.targetYaw = null;
+            cam.current.dragging = true;
+          }}
+          onPointerMove={(e) => {
+            if (pts.current.has(e.pointerId)) pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pinch.current && pts.current.size === 2) {
+              const [a, b] = [...pts.current.values()];
+              const p = pinch.current;
+              setZoom(() => (p.z * Math.hypot(a.x - b.x, a.y - b.y)) / Math.max(1, p.d));
+              return;
+            }
+            const d = drag.current;
+            if (!d) return;
+            cam.current.yaw = d.yaw + (e.clientX - d.x) * 0.011;
+            cam.current.pitch = Math.max(-0.6, Math.min(1.1, d.pitch + (e.clientY - d.y) * 0.006));
+          }}
+          onPointerUp={(e) => {
+            pts.current.delete(e.pointerId);
+            if (pts.current.size < 2) pinch.current = null;
+            drag.current = null;
+            cam.current.dragging = false;
+          }}
+          onPointerCancel={(e) => {
+            pts.current.delete(e.pointerId);
+            pinch.current = null;
+            drag.current = null;
+            cam.current.dragging = false;
+          }}
+        >
+          {status !== "ready" && (
+            <div className="absolute inset-0 z-20 grid place-items-center">
+              {status === "loading" ? (
+                <div className="flex flex-col items-center gap-2 text-stone-500">
+                  <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-violet-200 border-t-violet-600" />
+                  <span className="text-xs font-bold">กำลังสร้างโมเดล 3D…</span>
+                </div>
+              ) : (
+                <p className="max-w-xs rounded-2xl bg-white/90 p-4 text-center text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+                  เบราว์เซอร์นี้แสดงภาพ 3D ไม่ได้ (ต้องรองรับ WebGL) — ลองเปิดใน Chrome/Safari รุ่นใหม่
+                </p>
+              )}
+            </div>
+          )}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-170px)] items-center gap-2 rounded-full bg-white/90 py-1.5 pl-1.5 pr-3.5 shadow-sm ring-1 ring-stone-200 backdrop-blur">
+            <span className="whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[11px] font-extrabold text-white">{backSheet ? "🚪 พิมพ์ 2 ด้าน" : "🚪 พิมพ์ด้านเดียว"}</span>
+            <span className="truncate text-xs font-bold text-stone-700">{spin ? "หมุนโชว์รอบตัว" : DOOR_HANGER_VIEW_TH[view]}</span>
+          </div>
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full bg-stone-900/70 px-3.5 py-1.5 text-[11px] font-semibold text-white backdrop-blur">
+            <span className="hidden sm:inline">↔ ลาก = หมุนดูรอบตัว</span>
+            <span className="sm:hidden">↔ หมุน</span>
+            <span className="h-3 w-px bg-white/30" />
+            <span className="hidden sm:inline">↕ ลาก = เงย/ก้ม</span>
+            <span className="sm:hidden">↕ เงย/ก้ม</span>
+            <span className="h-3 w-px bg-white/30" />
+            <span className="hidden sm:inline">🔍 ล้อเมาส์/หยิก = ซูม</span>
+            <span className="sm:hidden">🔍 หยิก = ซูม</span>
+          </div>
+          <div
+            className="absolute right-3 top-3 z-10 flex items-center rounded-full bg-white/90 p-0.5 shadow-sm ring-1 ring-stone-200 backdrop-blur"
+            onPointerDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <button type="button" onClick={() => setZoom((z) => z / 1.25)} className="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-stone-600 hover:bg-stone-100" aria-label="ซูมออก">
+              −
+            </button>
+            <button type="button" onClick={() => setZoom(() => 1)} className="min-w-[52px] rounded-full px-1 text-xs font-extrabold text-stone-700 hover:bg-stone-100" title="กลับขนาดปกติ">
+              {Math.round(zoom * 100)}%
+            </button>
+            <button type="button" onClick={() => setZoom((z) => z * 1.25)} className="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-stone-600 hover:bg-stone-100" aria-label="ซูมเข้า">
+              +
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 px-4 pb-4 pt-3">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+            <span className="flex items-center rounded-full bg-stone-100 p-0.5 ring-1 ring-stone-200/70" role="radiogroup" aria-label="มุมมอง">
+              {(["left", "front", "right", "back"] as DoorHangerView[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={!spin && view === v}
+                  onClick={() => goView(v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
+                >
+                  {v === "front" ? "👁 ด้านหน้า" : DOOR_HANGER_VIEW_TH[v]}
+                </button>
+              ))}
+            </span>
+            <button
+              type="button"
+              aria-pressed={spin}
+              onClick={() => setSpin((s) => !s)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-extrabold ring-1 transition ${spin ? "bg-violet-600 text-white ring-violet-600 shadow-sm" : "bg-white text-violet-700 ring-violet-200 hover:bg-violet-50"}`}
+            >
+              {spin ? "⏸ หยุดหมุน" : "🔄 หมุนโชว์รอบตัว"}
+            </button>
+          </div>
+          <p className="text-center text-[11px] text-stone-400">
+            ภาพจำลองโดยประมาณ — ป้ายทรงตามเทมเพลต แขวนบนก้านมือจับประตู{backSheet ? " · ด้านหลังเป็นลายที่ 2" : mat.clear ? " · วัสดุใส ด้านหลังเห็นลายกลับด้าน" : " · ด้านหลังเป็นเนื้อวัสดุเปล่า"} · สีจริงอาจต่างจากหน้าจอเล็กน้อย
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

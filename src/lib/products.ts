@@ -3243,7 +3243,8 @@ export interface Product {
      * 📱 "stand360" = 360° Phone Stand (แผ่นทรงตามเส้นไดคัท + ฐานหมุน) · "stand3" = Phone Stand 3 step (แผ่นใสพับ 2 รอย) — 21 ต.ค. 69 · ดู lib/stand-mock
      * ลักษณะแก้ว/มุมมองเริ่มต้นเดาจากตัวเลือกที่เลือก (ดู lib/mug-mock) · ไม่ตั้ง = ไม่มีปุ่ม
      */
-    mock3d?: "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas";
+    /** 🚪 "doorhanger" = ป้ายแขวนประตู แขวนบนมือจับ หนา/ใสตามวัสดุ (23 ต.ค. 69 · lib/door-hanger-mock) */
+    mock3d?: "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas" | "doorhanger";
   };
   /**
    * ✂️ จอ "ออกแบบชิ้นงานไดคัท" บนเว็บ (พวงกุญแจอะคริลิค ฯลฯ) — ลูกค้าอัปรูป ระบบลบพื้น+ตีเส้นตัด+เจาะรูให้

@@ -178,6 +178,7 @@ import { folderMockFrom } from "@/lib/folder-mock";
 import { canvasMockFrom } from "@/lib/canvas-mock";
 import { bannerMockFrom } from "@/lib/banner-mock";
 import { bagMockFrom } from "@/lib/bag-mock";
+import { doorHangerMockFrom } from "@/lib/door-hanger-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -9891,7 +9892,10 @@ export default function ProductDetail({
                               : // 🖼🪵 กรอบรูปแคนวาส (23 ต.ค. 69) — ขนาดหน้างานจากค่า "ขนาด" (30x40cm) · ผืน = หน้างาน + ขอบข้าง + ขอบเย็บ
                                 product.calendarStudio?.mock3d === "canvas"
                                 ? canvasMockFrom(effective)
-                                : undefined
+                                : // 🚪 ป้ายแขวนประตู (23 ต.ค. 69) — ความหนา/ความใสตาม "ชนิดวัสดุ"
+                                  product.calendarStudio?.mock3d === "doorhanger"
+                                  ? doorHangerMockFrom(effective)
+                                  : undefined
               }
             />
           )}
