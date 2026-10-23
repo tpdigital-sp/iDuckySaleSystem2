@@ -180,6 +180,7 @@ import { bannerMockFrom } from "@/lib/banner-mock";
 import { bagMockFrom } from "@/lib/bag-mock";
 import { bandanaMockFrom } from "@/lib/bandana-mock";
 import { pouchMockFrom } from "@/lib/pouch-mock";
+import { hairMockFrom } from "@/lib/hair-mock";
 import { doorHangerMockFrom } from "@/lib/door-hanger-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
@@ -9901,6 +9902,9 @@ export default function ProductDetail({
                               : // 👛 กระเป๋าต๊อบแต๊บ (23 ต.ค. 69) — เนื้อผ้า + สีไหมเย็บจากตัวเลือก
                               product.calendarStudio?.mock3d === "pouch"
                               ? pouchMockFrom(effective)
+                              : // 🎀 ผ้าผูกผม / Scrunchy (23 ต.ค. 69) — ผืนพับครึ่งตัว S / ท่อผ้าจีบบนยางวง (lib/hair-mock)
+                              product.calendarStudio?.mock3d === "scarf" || product.calendarStudio?.mock3d === "scrunchy"
+                              ? hairMockFrom(product.calendarStudio.mock3d, effective)
                               : // 🖼🪵 กรอบรูปแคนวาส (23 ต.ค. 69) — ขนาดหน้างานจากค่า "ขนาด" (30x40cm) · ผืน = หน้างาน + ขอบข้าง + ขอบเย็บ
                                 product.calendarStudio?.mock3d === "canvas"
                                 ? canvasMockFrom(effective)

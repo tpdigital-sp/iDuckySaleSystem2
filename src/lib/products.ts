@@ -3251,7 +3251,8 @@ export interface Product {
     /** 🚪 "doorhanger" = ป้ายแขวนประตู แขวนบนมือจับ หนา/ใสตามวัสดุ (23 ต.ค. 69 · lib/door-hanger-mock) */
     /** 🐶 "bandana" = ปลอกคอสัตว์เลี้ยง ผ้าพันคอสามเหลี่ยมพันรอบคอ 3 แบบตามเรท (23 ต.ค. 69 · lib/bandana-mock) */
     /** 👛 "pouch" = กระเป๋าต๊อบแต๊บ ผ้าปากคลิปสปริง ผืนกางออกหน้า/หลัง (23 ต.ค. 69 · lib/pouch-mock) */
-    mock3d?: "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas" | "doorhanger" | "bandana" | "pouch";
+    /** 🎀 "scarf" / "scrunchy" = ผ้าผูกผมพับครึ่งตัว S / ยางรัดผมผ้าท่อจีบ (23 ต.ค. 69 · lib/hair-mock) */
+    mock3d?: "mug" | "stand360" | "stand3" | "cushion" | "folder" | "xstand" | "rollup" | "bag" | "canvas" | "doorhanger" | "bandana" | "pouch" | "scarf" | "scrunchy";
   };
   /**
    * ✂️ จอ "ออกแบบชิ้นงานไดคัท" บนเว็บ (พวงกุญแจอะคริลิค ฯลฯ) — ลูกค้าอัปรูป ระบบลบพื้น+ตีเส้นตัด+เจาะรูให้

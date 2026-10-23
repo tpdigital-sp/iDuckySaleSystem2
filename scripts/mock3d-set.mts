@@ -11,6 +11,7 @@
  *   npx tsx scripts/mock3d-set.mts <productId> bandana  # ปลอกคอสัตว์เลี้ยง ผ้าพันคอสามเหลี่ยมพันรอบคอ (23 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> doorhanger  # ป้ายแขวนประตู แขวนบนมือจับ หนา/ใสตามวัสดุ (23 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> pouch  # กระเป๋าต๊อบแต๊บ ผ้าปากคลิปสปริง (23 ต.ค. 69)
+ *   npx tsx scripts/mock3d-set.mts <productId> scarf|scrunchy  # ผ้าผูกผมพับครึ่ง / ยางรัดผมผ้าจีบ (23 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> none    # ถอดออก
  *
  * ตั้งได้ที่หน้าแก้ไขสินค้าหลังบ้าน (กล่อง 🧊 ปุ่ม "ดูแบบ 3D") เหมือนกัน — สคริปต์นี้ไว้ตั้งจากเครื่องตอนทดสอบ
@@ -22,9 +23,9 @@ import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const [PRODUCT, MODE] = process.argv.slice(2);
-const MODES = ["mug", "stand360", "stand3", "cushion", "folder", "xstand", "rollup", "bag", "canvas", "bandana", "doorhanger", "pouch", "none"] as const;
+const MODES = ["mug", "stand360", "stand3", "cushion", "folder", "xstand", "rollup", "bag", "canvas", "bandana", "doorhanger", "pouch", "scarf", "scrunchy", "none"] as const;
 if (!PRODUCT || !MODES.includes((MODE ?? "") as (typeof MODES)[number])) {
-  console.error("ใช้: npx tsx scripts/mock3d-set.mts <productId> mug|stand360|stand3|cushion|folder|xstand|rollup|bag|canvas|bandana|doorhanger|pouch|none");
+  console.error("ใช้: npx tsx scripts/mock3d-set.mts <productId> mug|stand360|stand3|cushion|folder|xstand|rollup|bag|canvas|bandana|doorhanger|pouch|scarf|scrunchy|none");
   process.exit(1);
 }
 const env = Object.fromEntries(
