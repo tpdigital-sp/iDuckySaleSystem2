@@ -112,11 +112,22 @@ ${duck(1110, 620, 1.2, true, 0.16)}${duck(110, 980, 1.6, false, 0.16)}${duck(110
 ${body}
 </svg>`;
 
+// 🐶 หมาใส่ผ้าพันคอข้างภาพผ้า (เจ้าของร้านสั่ง 23 ต.ค. 69 "อยากให้มีโมเดลหมาข้าง ๆ ด้วย")
+//   รูป scripts/assets/collar-dog-<แบบ>.png = พุดเดิ้ลมุมหน้าจาก public/mock/collar-animal ตัดพื้น + ย้อมผ้าเป็นสี/ลายเป็ดของแบบนั้น (408×630)
+//   ภาพผ้า + ป้ายอธิบายย่อ 0.61 ไปฝั่งซ้าย (กรอบเนื้อหาเดิม x 40–1150 · y 260–940) · หมาฝั่งขวา สูง ~770
+const dogImg = (kind) => {
+  const b64 = readFileSync(new URL(`./assets/collar-dog-${kind}.png`, import.meta.url)).toString("base64");
+  return `<image href="data:image/png;base64,${b64}" x="708" y="268" width="470" height="726" preserveAspectRatio="xMidYMax meet"/>
+<ellipse cx="943" cy="992" rx="190" ry="18" fill="#000" opacity="0.08"/>`;
+};
+const withDog = (kind, inner) => `<g transform="translate(-4 269) scale(0.61)">${inner}</g>${dogImg(kind)}`;
+
 // ---------- แบบที่ 1: แบบผูก — ผ้าสามเหลี่ยมชิ้นเดียว ปลายสองข้างยาวไว้ผูกรอบคอ ----------
 const T1 = THEMES.tie;
 const tri1 = "M 110 400 Q 600 470 1090 400 Q 1040 470 960 520 L 640 900 Q 600 945 560 900 L 240 520 Q 160 470 110 400 Z";
 const svg1 = page(T1, `
 ${header(T1, 1, "ปลอกคอ แบบผูก", "ผ้าพันคอสามเหลี่ยม · ผ้า 1 ชิ้น · สกรีน 1 ด้าน")}
+${withDog("tie", `
 <g filter="url(#soft)">
   ${cloth(tri1)}
   <path d="M 150 418 Q 600 484 1050 418 M 262 530 L 600 900 L 938 530" fill="none" stroke="#fff" stroke-width="5" stroke-dasharray="18 12" stroke-linecap="round" opacity="0.95"/>
@@ -125,6 +136,7 @@ ${name(T1, 600, 600)}
 ${callout(T1, 300, 300, 150, 410, "ปลายผ้าผูกรอบคอ")}
 ${callout(T1, 900, 300, 760, 462, "สกรีนลายด้านหน้า")}
 ${callout(T1, 930, 900, 760, 735, "เย็บม้วนริมขอบ")}
+`)}
 ${chips(T1, ["ผ้า 1 ชิ้น", "สกรีน 1 ด้าน", "XS – XXL"])}
 `);
 
@@ -150,6 +162,7 @@ const snap = (x, y, female = false) => `
 ${female ? `<circle cx="${x}" cy="${y}" r="12" fill="none" stroke="#a48f95" stroke-width="5"/>` : `<circle cx="${x}" cy="${y}" r="10" fill="#a48f95"/>`}</g>`;
 const svg2 = page(T2, `
 ${header(T2, 2, "ปลอกคอ แบบติดกระดุม", "ผ้า 2 ชิ้นเย็บประกบ · สกรีน 2 ด้าน")}
+${withDog("button", `
 <g filter="url(#soft)">
   <path d="M 178 446 L 1078 446 L 628 922 Z" fill="url(#back)"/>
   ${cloth(tri2)}
@@ -160,6 +173,7 @@ ${name(T2, 600, 600)}
 ${callout(T2, 300, 300, 212, 440, "ติดกระดุมแป๊ก")}
 ${callout(T2, 920, 300, 1062, 470, "ด้านหลังสกรีนได้")}
 ${callout(T2, 930, 900, 760, 735, "เย็บขอบแบบโพ้ง")}
+`)}
 ${chips(T2, ["ผ้า 2 ชิ้น", "สกรีน 2 ด้าน", "XS – XL"])}
 `);
 
@@ -168,6 +182,7 @@ const T3 = THEMES.strap;
 const tri3 = "M 250 430 L 950 430 L 950 470 L 600 880 L 250 470 Z";
 const svg3 = page(T3, `
 ${header(T3, 3, "ปลอกคอ แบบใส่กับสาย", "สอดกับสายปลอกคอเดิม · ผ้า 2 ชิ้น · สกรีน 2 ด้าน")}
+${withDog("strap", `
 <g filter="url(#soft)">
   <rect x="60" y="410" width="1080" height="56" rx="14" fill="url(#strapG)"/>
   <line x1="70" y1="422" x2="1130" y2="422" stroke="#fff" stroke-width="3" opacity="0.35"/>
@@ -186,6 +201,7 @@ ${name(T3, 600, 650)}
 ${callout(T3, 300, 300, 160, 438, "สายปลอกคอเดิม (ไม่รวม)")}
 ${callout(T3, 960, 300, 992, 470, "ช่องสอดสาย ~3 cm")}
 ${callout(T3, 930, 900, 760, 690, "สกรีนได้ 2 ด้าน")}
+`)}
 ${chips(T3, ["ผ้า 2 ชิ้น", "สกรีน 2 ด้าน", "S – XL"])}
 `);
 
@@ -195,9 +211,9 @@ const BUCKET = "product-images";
 const DIR = `products/${PRODUCT_ID}`;
 // จับคู่ด้วย label เรทจริงใน DB → ชื่อไฟล์ตามเนื้อหาภาพ (ไม่ใช่ลำดับ)
 const jobs = [
-  { rateLabel: "ปลอกคอ แบบผูก", file: "rate-tie-mock-v3.jpg", svg: svg1 },
-  { rateLabel: "ปลอกคอ แบบติดกระดุม", file: "rate-button-mock-v3.jpg", svg: svg2 },
-  { rateLabel: "ปลอกคอ แบบใส่กับสาย", file: "rate-strap-mock-v3.jpg", svg: svg3 },
+  { rateLabel: "ปลอกคอ แบบผูก", file: "rate-tie-mock-v4.jpg", svg: svg1 },
+  { rateLabel: "ปลอกคอ แบบติดกระดุม", file: "rate-button-mock-v4.jpg", svg: svg2 },
+  { rateLabel: "ปลอกคอ แบบใส่กับสาย", file: "rate-strap-mock-v4.jpg", svg: svg3 },
 ];
 
 // --dry = เขียน JPG ลง $TMPDIR/collar-rate-mock/ ให้ดูก่อน ไม่อัป ไม่แตะ DB
