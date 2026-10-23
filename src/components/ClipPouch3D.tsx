@@ -151,9 +151,11 @@ export default function ClipPouch3D({
         const PW = W - 2 * SX;
         const PH = H / 2 - TOP;
         const CH = Math.min(POUCH_CLIP_MM, PH * 0.4);
-        const ZT = 2.2; // ครึ่งความหนาตรงช่องตัวหนีบ (ผ้า 2 ชั้น + แถบสปริง)
-        const BULGE = Math.min(7, Math.max(3.2, PW * 0.04)); // พองกลางตัวกระเป๋า
-        const LIFT = 6;
+        // 🫧 สมจริงขึ้น (เจ้าของร้านสั่ง 23 ต.ค. 69 "อยากให้สมจริงเหมือนของจริงมากกว่านี้หน่อย" — เทียบรูปสินค้าจริง):
+        //   ตัวกระเป๋าพองแบบหมอน ~8.5% ของความกว้าง (เดิม 4% แบนเหมือนกระดาษ) · ช่องตัวหนีบเป็นท่อพองตามแถบสปริง
+        const ZT = Math.min(4, Math.max(2.4, PW * 0.03)); // ครึ่งความหนาตรงช่องตัวหนีบ
+        const BULGE = Math.min(13, Math.max(5, PW * 0.085)); // ครึ่งความหนากลางตัวกระเป๋า
+        const LIFT = 0.15 + BULGE * 0.35 + 0.2; // ก้นโค้งแตะพื้นพอดี (ตั้งบนโต๊ะแบบรูปสินค้า)
         const frontCv = crop(sheet, k, SX, TOP, PW, PH);
         const backCv = crop(sheet, k, SX, H / 2, PW, PH, true);
 
@@ -189,7 +191,7 @@ export default function ClipPouch3D({
         sun.shadow.camera.near = 5;
         sun.shadow.camera.far = 3000;
         sun.shadow.bias = -0.0005;
-        sun.shadow.radius = 5;
+        sun.shadow.radius = 8;
         scene.add(sun);
         scene.add(new THREE.AmbientLight(0xffffff, 0.85));
         // ไฟเติมตามกล้อง (ไม่ทอดเงา) — ผ้าด้านที่หันหากล้องไม่มืด
@@ -201,7 +203,7 @@ export default function ClipPouch3D({
         const g = <T extends { dispose(): void }>(x: T) => (geos.push(x), x);
         const m = <T extends { dispose(): void }>(x: T) => (mats.push(x), x);
 
-        const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(4000, 4000)), m(new THREE.ShadowMaterial({ opacity: 0.12 })));
+        const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(4000, 4000)), m(new THREE.ShadowMaterial({ opacity: 0.18 })));
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         scene.add(ground);
@@ -211,24 +213,50 @@ export default function ClipPouch3D({
           return t * t * (3 - 2 * t);
         };
         const Y_CH = PH - CH; // ขอบล่างช่องตัวหนีบ (แนวตะเข็บเย็บ)
-        /** ความหนาครึ่งหนึ่งของกระเป๋า (มม. จากแกนกลาง) ที่ (x, y) · ข้าง/ก้นแบน · ช่องตัวหนีบหนาเท่าสปริง */
+        /**
+         * ความหนาครึ่งหนึ่งของกระเป๋า (มม. จากแกนกลาง) ที่ (x, y):
+         *   ตัวกระเป๋า = หมอนพอง (ข้างบีบเข้าหาตะเข็บ · ก้นพับยังหนา ~35% → ก้นโค้งมน) · ร่องบุ๋มตรงแนวตะเข็บใต้ช่องตัวหนีบ
+         *   ช่องตัวหนีบ = ท่อพองตามแถบสปริง หนาเกือบถึงปลายสองข้าง · รอยย่นผ้าแนวตั้งใต้ช่อง (ผ้าถูกรวบตอนเย็บ)
+         */
         const thick = (x: number, y: number) => {
           const u = Math.min(1, Math.abs((2 * x) / PW));
-          const ch = smooth(Y_CH - 5, Y_CH + 1, y);
+          const sp = Math.sqrt(Math.max(0, 1 - u * u));
           const vb = Math.max(0, Math.min(1, y / Y_CH));
-          const body = BULGE * Math.pow(Math.sin((Math.PI / 2) * vb), 0.75) * (1 - Math.pow(u, 6));
-          const chan = ZT * (1 - Math.pow(u, 16));
-          return 0.45 + (1 - ch) * body + ch * chan;
+          const body = BULGE * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.06 + vb * 0.86)), 0.6)) * sp;
+          const cv = Math.max(0, Math.min(1, (y - Y_CH) / CH));
+          const chan = ZT * (0.78 + 0.22 * Math.sin(Math.PI * cv)) * Math.sqrt(Math.max(0, 1 - Math.pow(u, 14)));
+          const ch = smooth(Y_CH - 1.2, Y_CH + 1.8, y);
+          const crease = 1 - 0.5 * Math.exp(-Math.pow((y - Y_CH) / 2.2, 2));
+          const wr = (BULGE / 9) * 0.45 * Math.sin((x / PW) * Math.PI * 9 + 0.6) * Math.exp(-Math.pow((y - (Y_CH - 7)) / 6, 2)) * (0.35 + 0.65 * u) * sp;
+          return 0.15 + ((1 - ch) * (body + wr) + ch * chan) * crease;
+        };
+        /** ข้างกระเป๋าเว้าเข้าตามความพองของแถวนั้น (ผ้าถูกดึงไปเป็นความหนา) — ขอบกลางตัวเว้ามากสุด */
+        const xOf = (x: number, y: number) => {
+          const u = (2 * x) / PW;
+          return x * (1 - ((0.55 * (thick(0, y) - 0.15)) / PW) * u * u);
+        };
+        /** เงาอ่อนตามรอยพับ (เขียนลงสีจุดยอด) — ใกล้ตะเข็บข้าง/ร่องใต้ช่องตัวหนีบมืดลงนิด ๆ */
+        const shadeOf = (x: number, y: number) => {
+          const u = Math.min(1, Math.abs((2 * x) / PW));
+          const side = 0.8 + 0.2 * Math.pow(Math.max(0, 1 - Math.pow(u, 4)), 0.6);
+          const cr = 1 - 0.16 * Math.exp(-Math.pow((y - Y_CH) / 1.8, 2));
+          const bot = 0.9 + 0.1 * smooth(0, 6, y);
+          return side * cr * bot;
         };
         /** แผ่นผ้าตามความหนา: เต็มกว้าง × สูง · side +1 หน้า / −1 หลัง (หมุน 180° รอบแกนตั้ง) · lift = ยกออกจากผิว */
         const panelGeo = (side: 1 | -1, lift = 0) => {
-          const geo = new THREE.PlaneGeometry(PW, PH, 80, 80);
+          const geo = new THREE.PlaneGeometry(PW, PH, 110, 110);
           const p = geo.attributes.position as InstanceType<typeof THREE.BufferAttribute>;
+          const col = new Float32Array(p.count * 3);
           for (let i = 0; i < p.count; i++) {
             const x = p.getX(i);
             const y = p.getY(i) + PH / 2;
-            p.setXYZ(i, side === 1 ? x : -x, y, side * (thick(x, y) + lift));
+            const xx = xOf(x, y);
+            p.setXYZ(i, side === 1 ? xx : -xx, y, side * (thick(x, y) + lift));
+            const c = shadeOf(x, y);
+            col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = c;
           }
+          geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
           geo.computeVertexNormals();
           return g(geo);
         };
@@ -250,7 +278,7 @@ export default function ClipPouch3D({
             const r = Math.abs(a - b) / 2;
             for (let j = 0; j <= NA; j++) {
               const th = (Math.PI * j) / NA;
-              pos.push(x, y0 + dir * r * Math.sin(th), zc + (a - zc) * Math.cos(th));
+              pos.push(xOf(x, y0), y0 + dir * r * Math.sin(th), zc + (a - zc) * Math.cos(th));
               uv.push(i / NX, j / NA);
             }
           }
@@ -277,6 +305,7 @@ export default function ClipPouch3D({
           const mm = (mat as InstanceType<typeof THREE.MeshPhysicalMaterial>).clone();
           mm.map = t;
           mm.side = THREE.DoubleSide;
+          mm.vertexColors = false;
           mats.push(mm);
           return new THREE.Mesh(geo, mm);
         };
@@ -309,6 +338,7 @@ export default function ClipPouch3D({
               sheenRoughness: fabricOpts.sheenRoughness,
               sheenColor: new THREE.Color(0xffffff),
               envMapIntensity: 0.55,
+              vertexColors: true,
               ...(weave ? { bumpMap: weave, bumpScale: 0.6 } : {}),
               side: THREE.FrontSide,
             }),
@@ -333,11 +363,13 @@ export default function ClipPouch3D({
         // 👄 ปากกระเป๋า: ขอบบนของแต่ละด้านพับเข้าด้านใน (โค้งจากผิวนอกเข้าหาแกนกลาง) — หน้า/หลังแยกกัน ปากปิดด้วยคลิป
         //   ลายโค้ง = แถบ "พับเข้าด้านใน" ต่อจากขอบบน (ผืน y = TOP ถอยขึ้น / ด้านหลัง y = H − TOP ถอยลง)
         const lip = (x: number) => thick(x, PH);
-        const arcLen = (Math.PI * (ZT + 0.45)) / 2;
+        const arcLen = (Math.PI * lip(0)) / 2;
         add(foldMesh(PH, 1, (x) => lip(x), () => 0.02, TOP, TOP - arcLen, frontMat));
         add(foldMesh(PH, 1, (x) => -lip(x), () => -0.02, H - TOP, H - TOP + arcLen, backMat));
         // ก้นกระเป๋า = พับกลางผืน (หน้าต่อหลัง)
-        add(foldMesh(0, -1, (x) => thick(x, 0), (x) => -thick(x, 0), H / 2 - 0.7, H / 2 + 0.7, frontMat));
+        //   ลายโค้ง = กลางผืน ยาวเท่าความยาวโค้งจริง (π × รัศมีก้น) — เดิมแถบ 1.4 มม. ยืดทั้งโค้งจนลายเป็นเส้น
+        const botArc = Math.PI * thick(0, 0);
+        add(foldMesh(0, -1, (x) => thick(x, 0), (x) => -thick(x, 0), H / 2 - botArc / 2, H / 2 + botArc / 2, frontMat));
         // ตะเข็บข้าง (เย็บกลับด้านใน เห็นเป็นขอบผ้าบาง ๆ) — สีเฉลี่ยของขอบลาย
         for (const s of [1, -1] as const) {
           const col = avgColor(sheet, k, s === 1 ? W - SX - 2 : SX, TOP, 2, PH);
@@ -348,7 +380,8 @@ export default function ClipPouch3D({
           for (let j = 0; j <= NY; j++) {
             const y = (PH * j) / NY;
             const t = thick(s * PW * 0.499, y) + 0.05;
-            pos.push(s * PW / 2, y, t, s * PW / 2, y, -t);
+            const xe = s * xOf(PW / 2, y);
+            pos.push(xe, y, t, xe, y, -t);
           }
           for (let j = 0; j < NY; j++) {
             const q = j * 2;
@@ -371,7 +404,7 @@ export default function ClipPouch3D({
           for (let x = -PW / 2 + 2.5; x + DASH <= PW / 2 - 2.5; x += DASH + GAP) {
             const cx = x + DASH / 2;
             const d = add(new THREE.Mesh(g(new THREE.BoxGeometry(DASH, 0.55, 0.35)), threadMat), false);
-            d.position.set(cx, ySt, side * (thick(cx, ySt) + 0.12));
+            d.position.set(side * xOf(cx, ySt), ySt, side * (thick(cx, ySt) + 0.12));
           }
 
         // 🔩 คลิปสปริง = บานพับแกนตั้งที่ปลายสองข้าง (เจ้าของร้านส่งรูปสินค้าจริง 23 ต.ค. 69 "คลิปเป็นแบบภาพตัวอย่างที่ส่งให้"):
