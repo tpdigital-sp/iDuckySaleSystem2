@@ -6,8 +6,9 @@
  *   npx tsx scripts/clip-pouch-template-link.mts            # ดูผล (ไม่เขียน)
  *   npx tsx scripts/clip-pouch-template-link.mts --write    # บันทึก + ล้างแคชหน้าสินค้าบนเว็บจริง (รันซ้ำได้)
  *
- * อาร์ตบอร์ด = ผืนกางออก (พับเข้าด้านใน/ใส่ตัวหนีบ/ด้านหน้า/ด้านหลัง) · ชื่อชุดไม่ตรงค่าตัวเลือก (9x9 ↔ 9.5x9cm · 18.5x14.5 ↔ 17.5x14.5cm) → ตาราง PAIRS
- * เส้นตัด = ขอบนอกแถบดำในสกิน (.ai ไม่มีเวกเตอร์กรอบปิด) วัดจากสกิน 300 dpi เป็นสี่เหลี่ยม · bleedMm = ระยะขอบซ้าย-ขวา
+ * อาร์ตบอร์ด = ผืนกางออก (ตะเข็บ/พับเข้าด้านใน/ใส่ตัวหนีบ/ด้านหน้า/ด้านหลัง) · จับคู่ชุดกับค่าตัวเลือกด้วยตาราง PAIRS
+ * ไฟล์ชุดแทนใหม่แล้ว (scripts/clip-pouch-template-replace.mts) → เส้นตัด = ขอบอาร์ตบอร์ดทั้งผืน · bleedMm 0
+ *   (ไฟล์เดิมเส้นตัด = ขอบนอกแถบดำในสกิน inset ~5 มม.)
  * ไม่ตั้ง finishedMm — หัวจอขึ้นขนาดผืนกางออก (แบบแฟ้มจิ๋ว)
  */
 import { readFileSync } from "node:fs";
@@ -19,13 +20,13 @@ import { revalidateLive } from "./lib/revalidate-live.mts";
 const WRITE = process.argv.includes("--write");
 const PRODUCT = "clip-pouch";
 const SIZE = "ขนาด";
-/** cut = สี่เหลี่ยมเส้นตัดในอาร์ตบอร์ด (มม.) */
-type Pair = { tpl: string; choice: string; cut: { x: number; y: number; w: number; h: number } };
+/** เส้นตัด = ขอบอาร์ตบอร์ดทั้งผืน (ไฟล์ใหม่จาก NAS 23 ต.ค. 69 · แถบเทา = ตะเข็บ) */
+type Pair = { tpl: string; choice: string };
 const PAIRS: Pair[] = [
-  { tpl: "tpl-9y3ijde49", choice: "9.5x9cm", cut: { x: 5, y: 5, w: 110, h: 230 } },
-  { tpl: "tpl-cr356eoli", choice: "11.5x10cm", cut: { x: 5.5, y: 5.5, w: 130, h: 260 } },
-  { tpl: "tpl-557hwfobs", choice: "14.5x10cm", cut: { x: 5, y: 5.5, w: 161, h: 260 } },
-  { tpl: "tpl-vk1t9fnp3", choice: "17.5x14.5cm", cut: { x: 5, y: 6.5, w: 210, h: 348 } },
+  { tpl: "tpl-9y3ijde49", choice: "9.5x9cm" },
+  { tpl: "tpl-cr356eoli", choice: "11.5x10cm" },
+  { tpl: "tpl-557hwfobs", choice: "14.5x10cm" },
+  { tpl: "tpl-vk1t9fnp3", choice: "17.5x14.5cm" },
 ];
 const die = (m: string): never => {
   console.error("✗", m);
@@ -72,8 +73,7 @@ for (const pair of PAIRS) {
   const f0 = files[0];
   const W = f0.widthMm!;
   const H = f0.heightMm!;
-  const { x, y, w, h } = pair.cut;
-  if (x < 0 || y < 0 || x + w > W || y + h > H) die(`${t.name}: เส้นตัดหลุดอาร์ตบอร์ด ${W}×${H}`);
+  const [x, y, w, h] = [0, 0, W, H];
   const cut = rectCurve(x, y, w, h);
   const bleed = Math.min(x, W - x - w);
   const { when: _w, choice: _c, choices: _cs, whiteUnder: _wu, finishedMm: _fm, ...fBase } = f0;
