@@ -7,7 +7,8 @@
  * three.js โหลดตอนกดปุ่มเท่านั้น (import()) · โครงเดียวกับ Stand3D (RoomEnvironment · ไฟตามกล้อง · ลาก=หมุน · ล้อ/หยิก=ซูม)
  * แผ่น = ทรงตามเส้นไดคัทของเทมเพลต (cut · มม. พิกัดอาร์ตบอร์ด) อัดหนาตามวัสดุ (lib/door-hanger-mock) · ลายครอปตามเส้นนั้นเหมือนไฟล์งาน
  *   ด้านหลัง: งาน 2 ด้าน = ลายหน้า 2 (backSheet · วาดในพิกัด "มองจากด้านหลัง" แบบไกด์กลับข้างของจอออกแบบ)
- *             ด้านเดียว = เนื้อวัสดุเปล่า · วัสดุใสมองทะลุเห็นลายด้านหน้ากลับด้าน
+ *             ด้านเดียว = เนื้อวัสดุเปล่า · อะคริลิคใสพิมพ์รองขาวใต้ลาย → หลังเห็นเงาขาวตามทรงลาย (เจ้าของร้านแจ้ง 23 ต.ค. 69)
+ *             · PET ใสไม่มีรองขาวในโมเดล → มองทะลุเห็นลายด้านหน้ากลับด้าน
  * ช่องแขวน = จุดว่างที่ไกลขอบชิ้นงานที่สุดในครึ่งบน (ทรงตะขอ = วงใน · แคปซูล = รูกลม) → ก้านมือจับลอดช่องนั้น
  * ประตูซ่อนเองตอนกล้องอ้อมไปด้านหลัง จะได้เห็นด้านหลังป้าย
  */
@@ -251,8 +252,8 @@ export default function DoorHanger3D({
           }
           return shape;
         };
-        const printTex = (src: HTMLCanvasElement, cs: TemplateCurve[]) => {
-          const t = new THREE.CanvasTexture(clipCanvas(src, cs, k));
+        const texOf = (cv: HTMLCanvasElement) => {
+          const t = new THREE.CanvasTexture(cv);
           t.colorSpace = THREE.SRGBColorSpace;
           t.anisotropy = renderer.capabilities.getMaxAnisotropy();
           t.repeat.set(1 / W, 1 / H); // uv ของ ShapeGeometry = พิกัดมม.
@@ -286,13 +287,17 @@ export default function DoorHanger3D({
         body.position.z = -T / 2;
         body.castShadow = !mat.clear;
         plate.add(body);
-        // ลายด้านหน้า · วัสดุใสงานด้านเดียว: เห็นลายกลับด้านทะลุมาจากหลังแผ่น (DoubleSide)
-        const seeThrough = mat.clear && !backSheet;
+        const printTex = (src: HTMLCanvasElement, cs: TemplateCurve[]) => texOf(clipCanvas(src, cs, k));
+        // ลายด้านหน้า · อะคริลิคใสงานด้านเดียว: มีรองขาวใต้ลาย → หลังเห็นขาวตามทรงลาย (ไม่ใช่ลายกลับด้าน)
+        //   PET ใสงานด้านเดียว: ไม่มีรองขาว → เห็นลายกลับด้านทะลุมาจากหลังแผ่น (DoubleSide)
+        const whiteBack = mock.material === "acrylic-clear" && !backSheet;
+        const seeThrough = mat.clear && !backSheet && !whiteBack;
+        const frontPrint = clipCanvas(sheet, cutCs, k);
         const front = new THREE.Mesh(
           g(new THREE.ShapeGeometry(shape, 32)),
           m(
             new THREE.MeshPhysicalMaterial({
-              map: printTex(sheet, cutCs),
+              map: texOf(frontPrint),
               roughness: 0.45,
               metalness: 0,
               clearcoat: 0.3,
@@ -306,6 +311,25 @@ export default function DoorHanger3D({
         front.position.z = T / 2 + 0.05;
         front.castShadow = true;
         plate.add(front);
+        if (whiteBack) {
+          // ⬜ รองขาว = เนื้อลาย (alpha) ถมขาว · เรขาคณิตเดียวกับด้านหน้า แสดงฝั่งหลัง (BackSide) → มองจากหลังกลับด้านเองตามจริง
+          const white = document.createElement("canvas");
+          white.width = frontPrint.width;
+          white.height = frontPrint.height;
+          const wc = white.getContext("2d");
+          if (wc) {
+            wc.fillStyle = "#ffffff";
+            wc.fillRect(0, 0, white.width, white.height);
+            wc.globalCompositeOperation = "destination-in";
+            wc.drawImage(frontPrint, 0, 0);
+          }
+          const under = new THREE.Mesh(
+            g(new THREE.ShapeGeometry(shape, 32)),
+            m(new THREE.MeshPhysicalMaterial({ map: texOf(white), roughness: 0.5, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.BackSide })),
+          );
+          under.position.z = -T / 2 - 0.05;
+          plate.add(under);
+        }
         // ลายด้านหลัง (งาน 2 ด้าน) — ผืนวาดแบบมองจากหลัง (x กลับ) → หมุน 180° รอบแกนตั้งแล้วเลื่อนกลับ x = W
         if (backSheet) {
           const bshape = toShape(backCs);
@@ -567,7 +591,13 @@ export default function DoorHanger3D({
             </button>
           </div>
           <p className="text-center text-[11px] text-stone-400">
-            ภาพจำลองโดยประมาณ — ป้ายทรงตามเทมเพลต แขวนบนก้านมือจับประตู{backSheet ? " · ด้านหลังเป็นลายที่ 2" : mat.clear ? " · วัสดุใส ด้านหลังเห็นลายกลับด้าน" : " · ด้านหลังเป็นเนื้อวัสดุเปล่า"} · สีจริงอาจต่างจากหน้าจอเล็กน้อย
+            ภาพจำลองโดยประมาณ — ป้ายทรงตามเทมเพลต แขวนบนก้านมือจับประตู{backSheet
+              ? " · ด้านหลังเป็นลายที่ 2"
+              : mock.material === "acrylic-clear"
+                ? " · ด้านหลังเห็นสีขาวตามทรงลาย (พิมพ์รองขาว)"
+                : mat.clear
+                  ? " · วัสดุใส ด้านหลังเห็นลายกลับด้าน"
+                  : " · ด้านหลังเป็นเนื้อวัสดุเปล่า"} · สีจริงอาจต่างจากหน้าจอเล็กน้อย
           </p>
         </div>
       </div>
