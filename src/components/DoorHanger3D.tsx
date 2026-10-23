@@ -278,7 +278,7 @@ export default function DoorHanger3D({
                 depthWrite: false,
               }),
             )
-          : m(new THREE.MeshPhysicalMaterial({ color: mat.face, roughness: mock.material === "mdf" ? 0.75 : 0.45, metalness: 0, clearcoat: mock.material.startsWith("acrylic") ? 0.6 : 0.1 }));
+          : m(new THREE.MeshPhysicalMaterial({ color: mat.face, roughness: mock.material === "mdf" ? 0.3 : 0.45, metalness: 0, clearcoat: mock.material.startsWith("acrylic") || mock.material === "mdf" ? 0.6 : 0.1 }));
         const edgeMat = mat.clear
           ? m(new THREE.MeshPhysicalMaterial({ color: mat.edge, roughness: 0.1, transparent: true, opacity: 0.9, clearcoat: 1 }))
           : m(new THREE.MeshStandardMaterial({ color: mat.edge, roughness: mock.material === "mdf" ? 0.9 : 0.5 }));

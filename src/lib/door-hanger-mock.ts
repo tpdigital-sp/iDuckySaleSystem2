@@ -22,7 +22,8 @@ export const DOOR_HANGER_VIEW_TH: Record<DoorHangerView, string> = { front: "ด
 
 /** ความหนาแผ่น (มม.) · ใส = มองทะลุ · edge = สีขอบแผ่น · face = สีเนื้อด้านที่ไม่พิมพ์ */
 export const DOOR_HANGER_MAT: Record<DoorHangerMaterial, { t: number; clear: boolean; edge: number; face: number; th: string }> = {
-  mdf: { t: 3, clear: false, edge: 0x9a7650, face: 0xc8a57a, th: "ไม้ MDF" },
+  // MDF ของร้านเป็นแผ่นเคลือบขาว — ด้านหลังที่ไม่พิมพ์เป็นสีขาว ขอบตัดเห็นเนื้อไม้ (เจ้าของร้านแจ้ง 23 ต.ค. 69 "MDF ด้านหลังจะเป็นสีขาว")
+  mdf: { t: 3, clear: false, edge: 0x9a7650, face: 0xfbfaf7, th: "ไม้ MDF" },
   "acrylic-clear": { t: 3, clear: true, edge: 0x9fd0de, face: 0xffffff, th: "อะคริลิคใส" },
   "acrylic-white": { t: 3, clear: false, edge: 0xf4f4f2, face: 0xfafaf8, th: "อะคริลิคขาวขุ่น" },
   "acrylic-color": { t: 3, clear: false, edge: 0xe9e4f5, face: 0xf3effa, th: "อะคริลิคสีพิเศษ" },
