@@ -17,7 +17,7 @@ function headline(designs: SideDesign[]) {
   return `พิมพ์ 2 ด้าน · ${cards} ใบ${designs.length > 1 ? ` (${designs.length} ลาย)` : ""}`;
 }
 
-const HOW = "ไฟล์ .pdf / .ai เรียงหน้า: ด้านหน้า → ด้านหลังของใบเดียวกัน แล้วต่อใบถัดไป (หน้าคี่ = ด้านหน้า · หน้าคู่ = ด้านหลัง)";
+const HOW = "ไฟล์ .pdf เรียงทีละใบ: ด้านหน้า → ด้านหลัง → เส้นไดคัท แล้วต่อใบถัดไป · .ai เรียงแถวละใบ (ซ้ายหน้า ขวาหลัง)";
 
 /** 🖨 เปิดหน้าต่างใบสรุปขนาด A4 แนวนอน แล้วสั่งพิมพ์ (ให้ฝ่ายผลิตแปะคู่กับไฟล์) */
 function printSheet(designs: SideDesign[], title: string) {
@@ -165,7 +165,7 @@ export function SideSheetLine({ it }: { it: Item }) {
   if (!designs) return null;
   return (
     <div className="mt-1 rounded border border-slate-900 px-2 py-1">
-      <p className="text-xs font-extrabold">📮 {headline(designs)} — หน้าคี่ในไฟล์ = ด้านหน้า · หน้าคู่ = ด้านหลัง</p>
+      <p className="text-xs font-extrabold">📮 {headline(designs)} — ไฟล์ .pdf ทีละใบ: หน้า → หลัง → ไดคัท</p>
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1">
         {designs.flatMap((d) =>
           d.cards.map((c, k) => (

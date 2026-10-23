@@ -8396,7 +8396,7 @@ export default function AdminOrderDetailPage() {
                             designs={proofSideDesigns(proofs, it.sel?.[PLACEMENT_SPEC_LABEL])!}
                             title={`${order.id} · ${it.name}`}
                             unit="รูปที่"
-                            note="แต่ละช่อง = 1 ใบ: ซ้ายด้านหน้า · ขวาด้านหลัง · กดรูปเพื่อดูใหญ่ · ไฟล์ .pdf/.ai เรียงตามเลขรูป (คี่ = หน้า · คู่ = หลัง)"
+                            note="แต่ละช่อง = 1 ใบ: ซ้ายด้านหน้า · ขวาด้านหลัง · กดรูปเพื่อดูใหญ่ · ไฟล์ .pdf เรียงทีละใบ: ด้านหน้า → ด้านหลัง → เส้นไดคัท"
                             badgeOf={(url) => proofs.find((pf) => pf.url === url)?.review}
                             onOpen={(url) => {
                               const j = proofs.findIndex((pf) => pf.url === url);

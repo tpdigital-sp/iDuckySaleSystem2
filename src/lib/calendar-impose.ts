@@ -142,45 +142,51 @@ export async function buildPrintPdf(input: {
   const W = input.wMm * PT;
   const H = input.hMm * PT;
   const { x, y, w, h, r } = input.cut;
-  for (const p of input.pages) {
-    const bytes = await p.file.arrayBuffer();
-    const img = p.file.type === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-    const pg = doc.addPage([W, H]);
-    pg.drawImage(img, { x: 0, y: 0, width: W, height: H });
-    pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
-  }
   const path =
     input.cut.svg ??
     (r
       ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
       : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`);
   const whites = input.whites ?? [];
-  for (const wp of whites) {
+  /** ลำดับหน้าในไฟล์ — ชื่อ (Subject) + ป้ายหน้า (PageLabels) จดตามที่ใส่จริง */
+  const names: string[] = [];
+  const tags: string[] = [];
+  const addCut = (label: string, tag: string) => {
+    doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
+    names.push(label);
+    tags.push(tag);
+  };
+  /**
+   * ✂️ ชุดหลายใบ (ชื่อหน้า "ใบที่ N · …") = เส้นไดคัทต่อท้ายชิ้นงานทีละใบ: ใบ 1 หน้า · ใบ 1 หลัง · ใบ 1 ไดคัท · ใบ 2 หน้า …
+   * เดิมหน้าไดคัทหน้าเดียวท้ายไฟล์ → รอบแรกแก้เป็นใบละหน้าแต่กองรวมท้ายไฟล์ เจ้าของร้านแจ้ง 23 ต.ค. 69 OD-261023-1997
+   * "มันควรต้องมี 8 อัน" · "เส้นไดคัทไม่ควรมาอยู่รวมกันแบบนี้ มันควรอยู่ถัดจากชิ้นงาน" · งานใบเดียว/ปฏิทิน = หน้าไดคัทหน้าเดียวท้ายไฟล์เหมือนเดิม
+   */
+  const cardOf = input.pages.map((p) => pageCardNo(p.name));
+  const perCard = new Set(cardOf.filter((n) => n != null)).size > 1 && cardOf.every((n) => n != null);
+  for (const [i, p] of input.pages.entries()) {
+    const bytes = await p.file.arrayBuffer();
+    const img = p.file.type === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const pg = doc.addPage([W, H]);
+    pg.drawImage(img, { x: 0, y: 0, width: W, height: H });
+    pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
+    names.push(p.name);
+    tags.push(printPageTag(p.name, i));
+    const c = cardOf[i];
+    if (perCard && cardOf[i + 1] !== c) addCut(`ใบที่ ${c} · เส้นไดคัท`, `Card${String(c).padStart(2, "0")}-Cut`);
+  }
+  for (const [i, wp] of whites.entries()) {
     const pg = doc.addPage([W, H]);
     fillCurvesEvenOdd(pg, wp.curves, H);
     pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
+    names.push(wp.name);
+    tags.push(`White-${i + 1}`);
   }
-  /**
-   * ✂️ หน้าเส้นไดคัท — ชุดหลายใบ (ชื่อหน้า "ใบที่ N · …") = ใบละ 1 หน้า เรียงตามใบ (Card01-Cut …)
-   * เดิมมีหน้าเดียวท้ายไฟล์ → โปสการ์ด 8 ใบได้เส้นตัดแค่ 1 อัน ต้องก๊อปเอง (เจ้าของร้านแจ้ง 23 ต.ค. 69 OD-261023-1997 "มันควรต้องมี 8 อัน")
-   */
-  const cards = [...new Set(input.pages.map((p) => pageCardNo(p.name)).filter((n): n is number => n != null))];
-  const cutTags = cards.length > 1 ? cards.map((c) => `Card${String(c).padStart(2, "0")}-Cut`) : ["CutLine"];
-  for (let k = 0; k < cutTags.length; k++)
-    doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
+  if (!perCard) addCut("เส้นไดคัท", "CutLine");
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
-  const n0 = input.pages.length;
-  doc.setSubject(
-    [
-      ...input.pages.map((p, i) => `${i + 1}.${p.name}`),
-      ...whites.map((wp, i) => `${n0 + i + 1}.${wp.name}`),
-      ...cutTags.map((_, k) => `${n0 + whites.length + k + 1}.เส้นไดคัท${cards.length > 1 ? ` ใบที่ ${cards[k]}` : ""}`),
-    ].join(" · "),
-  );
+  doc.setSubject(names.map((n, i) => `${i + 1}.${n}`).join(" · "));
   doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
-  const tags = input.pages.map((p, i) => printPageTag(p.name, i));
-  setPageTags(doc, [...tags, ...whites.map((_, i) => `White-${i + 1}`), ...cutTags]);
+  setPageTags(doc, tags);
   const bytes = await doc.save();
   return new File([bytes as BlobPart], name, { type: "application/pdf" });
 }

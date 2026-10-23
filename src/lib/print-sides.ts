@@ -162,6 +162,15 @@ export function sideSheetOf(it: { artworkUrls?: string[]; artworkBackUrls?: stri
       }
       card[side] = { url, page: j + 1 };
     });
+    // 📄 เลขหน้าในไฟล์ .pdf: ชุดหลายใบมีเส้นไดคัทต่อท้ายทีละใบ (หน้า · หลัง · ไดคัท) — buildPrintPdf
+    if (cards.length > 1 && cards.every((c) => c.label)) {
+      let n = 0;
+      for (const c of cards) {
+        if (c.front) c.front.page = ++n;
+        if (c.back) c.back.page = ++n;
+        n++;
+      }
+    }
     return { no: k + 1, cards, pages: names!.length, repeat: /ชุดละ \d+ ใบ: [^(·]*(?:· แยกแบบ [^(]*)?/.exec(specs[k])?.[0]?.trim() };
   });
   return out;
