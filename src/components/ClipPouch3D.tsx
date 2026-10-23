@@ -160,7 +160,9 @@ export default function ClipPouch3D({
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.NeutralToneMapping;
-        renderer.toneMappingExposure = 1.08;
+        // 🎨 สีสดตรงลาย (เจ้าของร้านทัก 23 ต.ค. 69 "สีมันดูจืดๆไปหน่อย") — เดิมแสงรวมด้านหน้า ~2.5 เท่า + เงาผ้าขาวทับ → tone mapping บีบจนซีด
+        //   ตอนนี้แสงรวมตรงหน้า ≈ 1 (แดด + ไฟเติม + ห้อง + ambient) ให้ผ้าหันหน้าหากล้องออกสีใกล้ลายที่ออกแบบ · เงา/ประกายมาจากแดดเฉียง
+        renderer.toneMappingExposure = 1.2;
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFShadowMap;
         renderer.domElement.style.width = "100%";
@@ -174,12 +176,12 @@ export default function ClipPouch3D({
         const envTex = pmrem.fromScene(room, 0.04).texture;
         room.dispose();
         scene.environment = envTex;
-        scene.environmentIntensity = 0.7;
+        scene.environmentIntensity = 0.3;
 
         const camera = new THREE.PerspectiveCamera(28, 1, 5, 5000);
         const BASE_DIST = Math.max(PH, PW * 0.9) * 3.2;
 
-        const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+        const sun = new THREE.DirectionalLight(0xffffff, 0.95);
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
         const sh = Math.max(PW, PH) * 1.4;
@@ -190,9 +192,9 @@ export default function ClipPouch3D({
         sun.shadow.bias = -0.0005;
         sun.shadow.radius = 8;
         scene.add(sun);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
         // ไฟเติมตามกล้อง (ไม่ทอดเงา) — ผ้าด้านที่หันหากล้องไม่มืด
-        const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+        const fill = new THREE.DirectionalLight(0xffffff, 0.3);
         scene.add(fill);
 
         const geos: { dispose(): void }[] = [];
@@ -319,10 +321,11 @@ export default function ClipPouch3D({
         // 🧵 เนื้อผ้า: ซาติน/ดัชเชส เงาลื่น (sheen) · บาร์บี้ เงานิด ๆ · แคนวาส ด้าน + ลายทอ
         const fab = mock.fabric;
         const fabricOpts = {
-          satin: { roughness: 0.36, sheen: 1, sheenRoughness: 0.3 },
-          duchess: { roughness: 0.42, sheen: 0.85, sheenRoughness: 0.38 },
-          barbie: { roughness: 0.62, sheen: 0.45, sheenRoughness: 0.55 },
-          canvas: { roughness: 0.92, sheen: 0.15, sheenRoughness: 0.8 },
+          // sheen = ประกายผ้าตามขอบโค้ง (ไม่ใช่ชั้นขาวทั้งผืน — เดิม 1 + สีขาวล้วน ทาขาวทับลายจนจืด)
+          satin: { roughness: 0.4, sheen: 0.55, sheenRoughness: 0.32 },
+          duchess: { roughness: 0.45, sheen: 0.45, sheenRoughness: 0.4 },
+          barbie: { roughness: 0.62, sheen: 0.25, sheenRoughness: 0.55 },
+          canvas: { roughness: 0.92, sheen: 0.08, sheenRoughness: 0.8 },
         }[fab];
         const weave = fab === "canvas" ? new THREE.CanvasTexture(weaveCanvas()) : null;
         if (weave) {
@@ -342,8 +345,8 @@ export default function ClipPouch3D({
               roughness: fabricOpts.roughness,
               sheen: fabricOpts.sheen,
               sheenRoughness: fabricOpts.sheenRoughness,
-              sheenColor: new THREE.Color(0xffffff),
-              envMapIntensity: 0.55,
+              sheenColor: new THREE.Color(0x9a9a9a),
+              envMapIntensity: 0.5,
               vertexColors: true,
               ...(weave ? { bumpMap: weave, bumpScale: 0.6 } : {}),
               side: THREE.FrontSide,
@@ -488,7 +491,7 @@ export default function ClipPouch3D({
           fill.target.position.set(0, lookY, 0);
           fill.target.updateMatrixWorld();
           // มองจากบน = แดดพอแล้ว · ก้มลงต่ำกว่าพื้นยิ่งเติมแรง (ก้นกระเป๋าไม่มืด)
-          fill.intensity = c.pitch < 0 ? 0.45 + Math.min(0.6, -c.pitch * 0.6) : 0.45;
+          fill.intensity = c.pitch < 0 ? 0.3 + Math.min(0.5, -c.pitch * 0.5) : 0.3;
           sun.position.set(camera.position.x, 0, camera.position.z).normalize().multiplyScalar(BASE_DIST * 1.1);
           sun.position.y = BASE_DIST * 0.9;
           sun.position.x += BASE_DIST * 0.25 * Math.cos(c.yaw);
