@@ -155,9 +155,6 @@ export default function ClipPouch3D({
         //   ตัวกระเป๋าพองแบบหมอน ~8.5% ของความกว้าง (เดิม 4% แบนเหมือนกระดาษ) · ช่องตัวหนีบเป็นท่อพองตามแถบสปริง
         const ZT = Math.min(4, Math.max(2.4, PW * 0.03)); // ครึ่งความหนาตรงช่องตัวหนีบ
         const BULGE = Math.min(13, Math.max(5, PW * 0.085)); // ครึ่งความหนากลางตัวกระเป๋า
-        const LIFT = 0.15 + BULGE * 0.35 + 0.2; // ก้นโค้งแตะพื้นพอดี (ตั้งบนโต๊ะแบบรูปสินค้า)
-        const frontCv = crop(sheet, k, SX, TOP, PW, PH);
-        const backCv = crop(sheet, k, SX, H / 2, PW, PH, true);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -180,7 +177,7 @@ export default function ClipPouch3D({
         scene.environmentIntensity = 0.7;
 
         const camera = new THREE.PerspectiveCamera(28, 1, 5, 5000);
-        const BASE_DIST = Math.max(PH + LIFT, PW * 0.9) * 3.2;
+        const BASE_DIST = Math.max(PH, PW * 0.9) * 3.2;
 
         const sun = new THREE.DirectionalLight(0xffffff, 1.15);
         sun.castShadow = true;
@@ -243,14 +240,23 @@ export default function ClipPouch3D({
           const bot = 0.9 + 0.1 * smooth(0, 6, y);
           return side * cr * bot;
         };
+        /**
+         * 🧵 ผืนเดียวต่อเนื่อง หน้า → ก้นพับ → หลัง (เจ้าของร้านทัก 23 ต.ค. 69 "ลายไม่ต่อกัน … มันเป็นภาพผืนเดียวกัน"
+         *   — เดิมโค้งก้นดึงลายช่วงท้ายด้านหน้าซ้ำ ลายเดียวกันโผล่ 2 ที่): โค้งก้นกินผืนกลาง ±YB (= ครึ่งความยาวโค้ง π·r/2)
+         *   แผ่นหน้า/หลังเริ่มที่ y = YB ใช้ลายถัดจากโค้งพอดี (ผืนหน้า TOP → H/2 − YB · ผืนหลัง H/2 + YB → H − TOP) ไม่บีบ ไม่ซ้ำ
+         */
+        const YB = (Math.PI * thick(0, 0)) / 2;
+        const LIFT = thick(0, YB) - YB + 0.2; // จุดต่ำสุดของโค้งก้นแตะพื้น (ตั้งบนโต๊ะแบบรูปสินค้า)
+        const frontCv = crop(sheet, k, SX, TOP, PW, PH - YB);
+        const backCv = crop(sheet, k, SX, H / 2 + YB, PW, PH - YB, true);
         /** แผ่นผ้าตามความหนา: เต็มกว้าง × สูง · side +1 หน้า / −1 หลัง (หมุน 180° รอบแกนตั้ง) · lift = ยกออกจากผิว */
         const panelGeo = (side: 1 | -1, lift = 0) => {
-          const geo = new THREE.PlaneGeometry(PW, PH, 110, 110);
+          const geo = new THREE.PlaneGeometry(PW, PH - YB, 110, 110);
           const p = geo.attributes.position as InstanceType<typeof THREE.BufferAttribute>;
           const col = new Float32Array(p.count * 3);
           for (let i = 0; i < p.count; i++) {
             const x = p.getX(i);
-            const y = p.getY(i) + PH / 2;
+            const y = p.getY(i) + (PH + YB) / 2;
             const xx = xOf(x, y);
             p.setXYZ(i, side === 1 ? xx : -xx, y, side * (thick(x, y) + lift));
             const c = shadeOf(x, y);
@@ -367,9 +373,8 @@ export default function ClipPouch3D({
         add(foldMesh(PH, 1, (x) => lip(x), () => 0.02, TOP, TOP - arcLen, frontMat));
         add(foldMesh(PH, 1, (x) => -lip(x), () => -0.02, H - TOP, H - TOP + arcLen, backMat));
         // ก้นกระเป๋า = พับกลางผืน (หน้าต่อหลัง)
-        //   ลายโค้ง = กลางผืน ยาวเท่าความยาวโค้งจริง (π × รัศมีก้น) — เดิมแถบ 1.4 มม. ยืดทั้งโค้งจนลายเป็นเส้น
-        const botArc = Math.PI * thick(0, 0);
-        add(foldMesh(0, -1, (x) => thick(x, 0), (x) => -thick(x, 0), H / 2 - botArc / 2, H / 2 + botArc / 2, frontMat));
+        //   ลายโค้ง = กลางผืน H/2 ± YB ต่อจากแผ่นหน้า/หลังพอดี (ยาวเท่าความยาวโค้ง)
+        add(foldMesh(YB, -1, (x) => thick(x, YB), (x) => -thick(x, YB), H / 2 - YB, H / 2 + YB, frontMat));
         // ตะเข็บข้าง (เย็บกลับด้านใน เห็นเป็นขอบผ้าบาง ๆ) — สีเฉลี่ยของขอบลาย
         for (const s of [1, -1] as const) {
           const col = avgColor(sheet, k, s === 1 ? W - SX - 2 : SX, TOP, 2, PH);
@@ -378,7 +383,7 @@ export default function ClipPouch3D({
           const pos: number[] = [];
           const idx: number[] = [];
           for (let j = 0; j <= NY; j++) {
-            const y = (PH * j) / NY;
+            const y = YB + ((PH - YB) * j) / NY;
             const t = thick(s * PW * 0.499, y) + 0.05;
             const xe = s * xOf(PW / 2, y);
             pos.push(xe, y, t, xe, y, -t);
