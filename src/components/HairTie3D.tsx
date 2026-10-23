@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import ScrunchyPhoto from "@/components/ScrunchyPhoto";
 import { HAIR_STYLE_TH, HAIR_VIEW_TH, SCARF_INSET_MM, SCARF_TIP_MM, SCRUNCHY_SEAM_MM, type HairMock, type HairView } from "@/lib/hair-mock";
 
 /** มุมกล้อง — yaw รอบแกนตั้ง (ด้านหน้าหันไป +z) · pitch ก้ม/เงย (บวก = มองจากบน) */
@@ -50,7 +51,8 @@ function crepeNormalCanvas(): HTMLCanvasElement {
       return a + (b - a) * sy;
     };
   };
-  const L = [layer(14, 22), layer(28, 40), layer(56, 72)];
+  // ริ้วซาตินแปรงขน: ยาวตามแนวผ้า (x) สั้นตามขวาง (y) แบบผิวผ้าในรูปสินค้า — ไม่ใช่เกล็ดกลมเปลือกส้ม
+  const L = [layer(6, 40), layer(12, 80), layer(24, 128)];
   const W8 = [0.55, 0.3, 0.15];
   const hgt = new Float32Array(N * N);
   for (let y = 0; y < N; y++)
@@ -81,7 +83,13 @@ function crepeNormalCanvas(): HTMLCanvasElement {
   return cv;
 }
 
-export default function HairTie3D({
+/** Scrunchy 6 มุม + ผ้าผูกผม 4 มุม = ภาพ 2D บนรูปผ้าจริง (components/ScrunchyPhoto · เจ้าของร้าน 23 ต.ค. 69 "ทำเป็นภาพ 2D แทน") */
+export default function HairTie3D(props: Parameters<typeof HairRibbon3D>[0]) {
+  // ผ้าผูกผมก็เป็นภาพ 2D บนรูปผ้าขาวจริงแล้ว (เจ้าของร้านส่งรูป 23 ต.ค. 69) — HairRibbon3D เก็บไว้เผื่อกลับมาใช้
+  return <ScrunchyPhoto {...props} />;
+}
+
+function HairRibbon3D({
   sheet,
   sheetMm,
   mock,
@@ -191,8 +199,8 @@ export default function HairTie3D({
         const crepe = new THREE.CanvasTexture(crepeNormalCanvas());
         crepe.wrapS = crepe.wrapT = THREE.RepeatWrapping;
         crepe.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        // 1 แผ่นลาย = 22 มม. ของผ้า → เกล็ดย่น ~0.4–1.5 มม. (มองเห็นได้แบบผ้าจริง)
-        crepe.repeat.set(W / 22, H / 22);
+        // 1 แผ่นลาย = 11 มม. ของผ้า → เกล็ดย่น ~0.2–0.8 มม. (22 มม. + แรง 0.28 = หยาบเป็นเปลือกส้ม — เจ้าของร้านทัก)
+        crepe.repeat.set(W / 11, H / 11);
         mats.push(crepe);
         const satin = m(
           new THREE.MeshPhysicalMaterial({
@@ -214,9 +222,9 @@ export default function HairTie3D({
             envMapIntensity: 2.6,
             // ผิวซาตินเครป — ประกายแตกเป็นเกล็ดเล็ก ๆ ไม่เรียบเป็นพลาสติก/ลูกโป่ง
             normalMap: crepe,
-            normalScale: new THREE.Vector2(0.28, 0.28),
+            normalScale: new THREE.Vector2(0.12, 0.12),
             clearcoatNormalMap: crepe,
-            clearcoatNormalScale: new THREE.Vector2(0.35, 0.35),
+            clearcoatNormalScale: new THREE.Vector2(0.22, 0.22),
             vertexColors: true,
             side: THREE.DoubleSide,
           }),
@@ -323,14 +331,14 @@ export default function HairTie3D({
           const CW = W - 2 * S; // ความยาวผ้าในเส้นเย็บ (วิ่งรอบวง)
           const CHt = H - 2 * S; // รอบท่อ
           const r = CHt / (2 * Math.PI); // รัศมีท่อเมื่อไม่ถูกรูด
-          const R0 = r + 21; // รัศมีกลางท่อ (ยางวงในราว Ø42 · ก้อนพองล้นเข้ารูกลางได้)
-          const M = 8; // จำนวนก้อนพอง
+          const R0 = r + 20; // รัศมีกลางท่อ — ก้อนอวบล้นเข้ารูกลาง เหลือรูราว 1/5 ของวง (แบบรูปสินค้า)
+          const M = 5; // จำนวนก้อนพอง (รูปสินค้า 5 ก้อนใหญ่ — 8 ก้อนดูเป็นกลีบดอกไม้)
           const NT = 900;
           const NP = 72;
           /** มุมก้อน ψ(θ): ไม่เท่ากันทุกก้อน (ไม่ลดลง — อนุพันธ์ M ± 2.25 > 0) · ψ(0) = 0 = คอด */
           const psi = (th: number) => M * th + 0.6 * Math.sin(2 * th) + 0.35 * Math.sin(3 * th + 1.9) - 0.35 * Math.sin(1.9);
-          /** 0 = คอด · 1 = กลางก้อน (ก้อนกว้าง คอดแคบ) */
-          const puffOf = (th: number) => Math.pow((1 - Math.cos(psi(th))) / 2, 0.45);
+          /** 0 = คอด · 1 = กลางก้อน */
+          const puffOf = (th: number) => 1 - Math.pow(1 - (1 - Math.cos(psi(th))) / 2, 2.4); // ก้อนกว้าง · คอดโค้งนุ่ม (ไม่บากเป็นตัว V)
           // ระยะผ้าสะสมตามรอบวง: ก้อนพองกินผ้ามากกว่าคอด → ลายยืดบนก้อน หดในคอด (แบบผ้าที่ถูกรูดจริง)
           const cum = new Float64Array(NT + 1);
           for (let i = 1; i <= NT; i++) {
@@ -345,7 +353,7 @@ export default function HairTie3D({
             // กลางผืน (แนวสูง) อยู่ที่ขอบนอกวง — ส่วนที่คนเห็นมากสุด · ขอบเย็บยาว (ขอบบน/ล่างผืน) ไปบรรจบด้านในวง
             const ph = (2 * Math.PI * j) / NP + Math.PI;
             // ก้อนพองเอียงสลับนิด ๆ (หน้าตัดหมุน) + ขนาดแต่ละก้อนไม่เท่ากัน
-            const phT = ph + 0.12 * Math.sin(ps) * (0.4 + 0.6 * q);
+            const phT = ph + 0.08 * Math.sin(ps) * (0.4 + 0.6 * q);
             const size = 1 + 0.13 * Math.sin(2 * th + 1.1) + 0.07 * Math.sin(5 * th + 0.3);
             // รอยย่นตามแนวท่อ: แรงสุดตรงคอด จาง ๆ บนก้อน
             //   + รอยย่นเฉียงบนก้อน (ผ้ากองตัวพาดข้ามท่อ) แบบรูปจริง
@@ -354,71 +362,28 @@ export default function HairTie3D({
             const fan = Math.pow(pin, 0.9);
             const fold = Math.sin(2 * phT + 1.7 * ps + 0.4 * Math.sin(3 * th));
             const wr =
-              (0.11 * fan + 0.008) * Math.sin(5 * phT + 1.3 * ps) +
-              0.022 * fan * Math.sin(9 * phT - 2.1 * ps + 0.5) +
-              0.07 * q * Math.pow(Math.abs(fold), 3) * Math.sign(fold) +
+              (0.085 * fan + 0.006) * Math.sin(5 * phT + 1.3 * ps) +
+              0.018 * fan * Math.sin(9 * phT - 2.1 * ps + 0.5) +
+              0.045 * q * fold +
               0.012 * q * Math.sin(4 * phT - 2.6 * ps + 1.2);
-            const rr = r * size * (0.5 + 0.92 * q + wr);
+            // รอยพับผ้าบนก้อน: ร่องแคบคม ๆ วิ่งเฉียงไหลเข้าหาคอด 1–2 เส้นต่อก้อน บนผิวที่เรียบตึง (แบบผ้าซาตินในรูปสินค้า)
+            const crease = Math.pow(1 - Math.abs(Math.sin(1.4 * phT + 0.85 * ps + 0.7 * Math.sin(2 * ps + th))), 5) * q;
+            const rr = r * size * (0.74 + 0.76 * q + wr - 0.1 * crease);
             const rc = R0 + 1.4 * Math.sin(2 * th + 0.4);
             const rad = rc + rr * Math.cos(phT);
-            const yc = rr * 0.95 + 0.6 * Math.sin(3 * th);
+            const yc = rr * 1.1 + 0.6 * Math.sin(3 * th); // ก้อนตั้งสูงกว่ากว้าง (ผ้าที่รูดดันตัวขึ้น แบบรูปสินค้า)
             return {
               // ทิศลาย: ด้านนอกวงมองจากหน้า = ผืนอ่านซ้าย→ขวา หัวขึ้น (z กลับด้าน + φ เดินลงจากขอบนอก)
-              p: [rad * Math.cos(th), yc - rr * 0.95 * Math.sin(phT), -rad * Math.sin(th)] as [number, number, number],
+              p: [rad * Math.cos(th), yc - rr * 1.1 * Math.sin(phT), -rad * Math.sin(th)] as [number, number, number],
               uv: [(S + (CW * cum[i]) / cum[NT]) / W, 1 - (S + (CHt * j) / NP) / H] as [number, number],
               // ร่องคอด/ร่องย่นมืดลง (ผ้าซ้อนบังแสง)
-              shade: (0.66 + 0.34 * Math.pow(q, 0.6)) * (1 - 0.14 * fan * (0.5 + 0.5 * Math.sin(5 * phT + 1.3 * ps))) * (1 - 0.1 * q * Math.max(0, -fold)),
+              shade: (0.66 + 0.34 * Math.pow(q, 0.6)) * (1 - 0.14 * fan * (0.5 + 0.5 * Math.sin(5 * phT + 1.3 * ps))) * (1 - 0.1 * q * Math.max(0, -fold)) * (1 - 0.3 * crease),
             };
           };
-          // 🧵 ทรงจากการจำลองผ้าจริง (scripts/scrunchy-cloth-sim.mjs · ยางวงหดรัดท่อผ้าจนจีบเอง) — โหลดไม่ได้ = ใช้สูตรข้างบน
-          const sim = await fetch("/mock/hair/scrunchy-sim.bin")
-            .then((res) => (res.ok ? res.arrayBuffer() : null))
-            .catch(() => null);
-          const dv = sim && sim.byteLength > 16 ? new DataView(sim) : null;
-          if (dv && String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) === "SCR1") {
-            const SU = dv.getUint32(4, true);
-            const SV = dv.getUint32(8, true);
-            const SC = dv.getUint32(12, true);
-            const P = (i: number, j: number) => {
-              const o = 16 + (((i % SU) * SV + (j % SV)) * 6);
-              return [dv.getInt16(o, true) / SC, dv.getInt16(o + 2, true) / SC, dv.getInt16(o + 4, true) / SC] as [number, number, number];
-            };
-            // แกนหน้าตัดแต่ละแถว (ใช้ทำเงาร่อง: ผ้าที่ยุบเข้าหาแกน = ร่องจีบ มืดลง)
-            const ctr = Array.from({ length: SU }, (_, i) => {
-              const c = [0, 0, 0];
-              for (let j = 0; j < SV; j++) {
-                const q = P(i, j);
-                c[0] += q[0] / SV;
-                c[1] += q[1] / SV;
-                c[2] += q[2] / SV;
-              }
-              return c;
-            });
-            const mesh = gridMesh(
-              SU,
-              SV,
-              (i, j) => {
-                const q = P(i, j);
-                const c = ctr[i % SU];
-                const dist = Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]);
-                return {
-                  p: q,
-                  uv: [(S + (CW * i) / SU) / W, 1 - (S + (CHt * j) / SV) / H] as [number, number],
-                  shade: 0.7 + 0.3 * Math.min(1, dist / (r * 1.15)),
-                };
-              },
-              satin,
-            );
-            root.add(mesh);
-            const bb = new THREE.Box3().setFromObject(mesh);
-            const sz = bb.getSize(new THREE.Vector3());
-            extent = Math.max(sz.x, sz.z) * 0.5 + 4;
-            lookY = sz.y * 0.4;
-          } else {
-            root.add(gridMesh(NT, NP, at, satin));
-            extent = R0 + r * 1.4;
-            lookY = r * 0.8;
-          }
+          // (ลองทรงจากการจำลองผ้า PBD แล้ว 23 ต.ค. 69 — ผ้าบิดเป็นเกลียว ลายแถบบิดตาม กลีบแหว่ง เจ้าของร้านว่า "แย่หนักกว่าเดิม" → ใช้ทรงสูตรนี้)
+          root.add(gridMesh(NT, NP, at, satin));
+          extent = R0 + r * 1.4;
+          lookY = r * 0.8;
         }
 
         const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(extent * 12, extent * 12)), m(new THREE.ShadowMaterial({ opacity: 0.18 })));
