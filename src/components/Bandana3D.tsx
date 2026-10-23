@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BANDANA_STYLE_TH, BANDANA_VIEW_TH, type BandanaMock, type BandanaView } from "@/lib/bandana-mock";
+import BandanaFabric3D from "@/components/BandanaFabric3D";
 
 type Pt = [number, number];
 interface Patch {
@@ -140,7 +141,24 @@ function drawTri(ctx: CanvasRenderingContext2D, src: CanvasImageSource, s: [Pt, 
 }
 
 
-export default function Bandana3D({
+type Props = {
+  /** ลายทั้งอาร์ตบอร์ด (วาดจากตัววาดจริงของจอออกแบบ) */
+  sheet: HTMLCanvasElement;
+  sheetMm: { w: number; h: number };
+  mock: BandanaMock;
+  title: string;
+  onClose: () => void;
+};
+
+/**
+ * แบบผูก = รูปพุดเดิ้ลใส่ผ้าพันคอผูกปม (หน้านี้) · แบบติดกระดุม / ใส่กับสาย = 3D ตัวผ้าอย่างเดียว (components/BandanaFabric3D)
+ * (23 ต.ค. 69 เจ้าของร้าน "อันนี้ไม่ใช่แบบผูก แต่เป็นแบบกระดุม ฉันอยากให้มี 3D ผ้า ที่ไม่ใช่อยู่บนโมเดลหมา")
+ */
+export default function Bandana3D(props: Props) {
+  return props.mock.style === "tie" ? <BandanaPhoto3D {...props} /> : <BandanaFabric3D {...props} />;
+}
+
+function BandanaPhoto3D({
   sheet,
   sheetMm,
   mock,
@@ -280,7 +298,8 @@ export default function Bandana3D({
         lay.height = PH;
         const lctx = lay.getContext("2d");
         if (lctx) {
-          lctx.fillStyle = "#fff";
+          // ผ้าใน mask ที่อยู่นอกตารางลาย (แถบรอบคอไปหาปม · ด้านเงาของผ้า) = สีมุมผ้า ไม่ปล่อยขาว (เจ้าของร้านทัก 23 ต.ค. 69 "ยังติดสีขาว")
+          lctx.fillStyle = tint;
           lctx.fillRect(0, 0, PW, PH);
           const NU = 28;
           const NV = 28;
