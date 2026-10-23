@@ -4571,6 +4571,12 @@ to{opacity:1;transform:none}}
 
 /* --- ปุ่มแสดงเพิ่ม + สถานะว่าง --- */
 .dl .plist-more{display:flex;justify-content:center;margin-top:26px}
+/* ลิงก์สินค้าที่ยังไม่วาดเป็นการ์ด (ให้ Google เห็นทุกลิงก์ใน HTML) — พับไว้ใต้ปุ่มแสดงเพิ่ม · 23 ต.ค. 69 */
+.dl .plist-more{flex-wrap:wrap}
+.dl .plist-rest{order:2;flex-basis:100%;margin-top:14px;text-align:center;font-size:13px;color:var(--ink-soft,#5b6b7a)}
+.dl .plist-rest summary{cursor:pointer;display:inline-block;padding:4px 10px;border-radius:999px}
+.dl .plist-rest ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px}
+.dl .plist-rest a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 .dl .plist-empty{margin-top:24px;border-radius:var(--r-l);padding:56px 26px;text-align:center;
   background:linear-gradient(180deg,rgba(255,255,255,.86) 0%,rgba(255,255,255,.66) 100%);
   border:2px solid #fff;box-shadow:var(--shadow-s)}

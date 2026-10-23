@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type CategoryId, type Product } from "@/lib/products";
+import { productPath, type CategoryId, type Product } from "@/lib/products";
 import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import ShopProductCard from "@/components/ShopProductCard";
@@ -19,13 +19,20 @@ const SORTS: { id: SortKey; label: string }[] = [
   { id: "rating", label: "คะแนนรีวิว" },
 ];
 
-export default function ProductListing() {
+export default function ProductListing({
+  initialProducts,
+  initialCats,
+}: {
+  /** สินค้าที่หน้าเซิร์ฟเวอร์ดึงมาให้ — วาดการ์ด/ลิงก์ลง HTML ได้เลย ไม่ต้องรอเบราว์เซอร์โหลด */
+  initialProducts?: Product[];
+  initialCats?: ShopCategory[];
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const category = (params.get("category") as CategoryId | null) ?? "all";
   // คำค้นเริ่มต้นจาก ?q= (ช่องค้นหาไวๆ ในเมกะเมนู "สินค้าและบริการ" ส่งมาแบบนี้)
   const [search, setSearch] = useState(() => params.get("q") ?? "");
-  const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
+  const [cats, setCats] = useState<ShopCategory[]>(() => (initialCats?.length ? initialCats : DEFAULT_CATEGORIES));
   useEffect(() => {
     fetchCategories().then((list) => setCats(list.filter((c) => !c.hidden)));
   }, []);
@@ -35,10 +42,10 @@ export default function ProductListing() {
 
   /**
    * โหลดสินค้า (Supabase หรือ localStorage) หลัง mount
-   * ตั้งต้นจากแคชของแท็บถ้าเคยโหลดแล้ว · ยังไม่เคยโหลด = null แล้วโชว์โครงการ์ดรอ
+   * ตั้งต้นจากของที่เซิร์ฟเวอร์ส่งมา (อยู่ใน HTML) → แคชของแท็บ → ไม่มีเลย = null แล้วโชว์โครงการ์ดรอ
    * (เดิมตั้งต้นด้วย PRODUCTS ซึ่งเป็นสินค้าชุดเก่าในโค้ด ทำให้เห็นของเก่าแวบหนึ่งทุกครั้งที่เปิดหน้า)
    */
-  const [all, setAll] = useState<Product[] | null>(() => cachedProductsLite());
+  const [all, setAll] = useState<Product[] | null>(() => (initialProducts?.length ? initialProducts : cachedProductsLite()));
   const loading = all === null;
   useEffect(() => {
     let active = true;
@@ -120,7 +127,8 @@ export default function ProductListing() {
   const CAT_PAGE = 3;
   const step = grouped ? CAT_PAGE : PAGE;
   const total = grouped ? groups.length : filtered.length;
-  const [shown, setShown] = useState(PAGE);
+  // ตั้งต้นตามโหมดตั้งแต่แรก — HTML จากเซิร์ฟเวอร์จะได้ไม่วาดการ์ดทุกใบ (ที่เหลือเป็นลิงก์ใน RestIndex)
+  const [shown, setShown] = useState(() => (grouped ? CAT_PAGE : PAGE));
   useEffect(() => setShown(grouped ? CAT_PAGE : PAGE), [category, search, sort, grouped]);
   const sentinel = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -432,6 +440,7 @@ export default function ProductListing() {
               )}
               {shown < total && (
                 <div ref={sentinel} className="plist-more">
+                  <RestIndex items={grouped ? groups.slice(shown).flatMap((g) => g.items) : filtered.slice(shown)} />
                   <button type="button" onClick={() => setShown((n) => n + step)} className="btn btn-ghost">
                     {grouped
                       ? `แสดงหมวดถัดไป (อีก ${(total - shown).toLocaleString("th-TH")} หมวด)`
@@ -462,3 +471,23 @@ function catTitle(name: string) {
   );
 }
 
+/**
+ * ลิงก์สินค้าที่ยังไม่ได้วาดเป็นการ์ด (ทยอยวาดทีละชุด) — ให้ทุกสินค้ามีลิงก์อยู่ใน HTML ตั้งแต่แรก
+ * Google ไม่เลื่อนจอ จึงเห็นแค่การ์ดชุดแรก ถ้าไม่มีรายการนี้หน้าสินค้าที่เหลือจะไม่มีลิงก์ภายในชี้ไปเลย
+ * วาดการ์ดครบเมื่อไหร่รายการนี้หายไปเอง
+ */
+function RestIndex({ items }: { items: Product[] }) {
+  if (!items.length) return null;
+  return (
+    <details className="plist-rest">
+      <summary>รายชื่อสินค้าที่เหลือ ({items.length.toLocaleString("th-TH")} รายการ)</summary>
+      <ul>
+        {items.map((p) => (
+          <li key={p.id}>
+            <Link href={productPath(p)}>{p.name}</Link>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}

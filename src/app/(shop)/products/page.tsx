@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { catShortName } from "@/lib/categories";
-import { getCategoryServer } from "@/lib/server/categories-server";
+import { getCategoriesServer, getCategoryServer } from "@/lib/server/categories-server";
+import { listProductsLiteServer } from "@/lib/server/public-products";
 import ProductListing from "./ProductListing";
 
 type Search = Promise<{ category?: string | string[]; q?: string | string[] }>;
@@ -38,10 +39,15 @@ export async function generateMetadata({ searchParams }: { searchParams: Search 
   return { title, description, alternates: { canonical: "/products" }, openGraph: { title, description, url: "/products" } };
 }
 
-export default function ProductsPage() {
+/**
+ * ส่งสินค้า+หมวดจากเซิร์ฟเวอร์เข้าไปตั้งแต่แรก → การ์ดและลิงก์ /products/… อยู่ใน HTML ให้ Google เห็น
+ * (เดิมโหลดฝั่งเบราว์เซอร์อย่างเดียว HTML มีแต่โครงการ์ดรอ · 23 ต.ค. 69)
+ */
+export default async function ProductsPage() {
+  const [products, cats] = await Promise.all([listProductsLiteServer(), getCategoriesServer()]);
   return (
     <Suspense>
-      <ProductListing />
+      <ProductListing initialProducts={products} initialCats={cats.filter((c) => !c.hidden)} />
     </Suspense>
   );
 }
