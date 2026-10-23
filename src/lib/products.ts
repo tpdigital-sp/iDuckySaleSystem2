@@ -1083,6 +1083,12 @@ export interface SizeFee {
    *     → ต่อหน่วยขาย = ค่าชิ้น ÷ จำนวนหน่วยที่ชิ้นใช้ (สั่ง 2 หลา × ฿60 = ฿120 = 1 ครั้ง) · ไม่ตั้ง = คิดเต็มทุกหน่วย
    */
   longPiece?: boolean;
+  /**
+   * 🔢 ปัดด้านยาวสุดเป็นเต็มหน่วยแบบ "ผ่อนเศษ" ก่อนเทียบขั้น — เศษไม่เกินค่านี้ปัดลง เกินปัดขึ้น
+   * (สแตนดี้ฐานไฟ — พนักงานแจ้ง 23 ต.ค. 69 "15.6-16.5 ซม คิดเพิ่ม 1 เซน · 16.6-17.5 ซม คิดเพิ่ม 2 เซน"
+   *  → 0.5: 16.5 = 16 · 16.6 = 17 · 15.5 = 15 ฟรี) · ไม่ตั้ง = เทียบค่าที่กรอกตรง ๆ (เศษเท่าไหร่ก็ขึ้นขั้นถัดไป)
+   */
+  roundSlack?: number;
 }
 
 /** 💰 ที่มาของค่าบริการตามขนาด — ไว้กางให้ลูกค้าเห็นว่า +฿ มาจาก ชิ้นละเท่าไหร่ × กี่ชิ้น */
@@ -1097,6 +1103,12 @@ export interface SizeFeeBreakdown {
   maxPieces?: number;
   /** 📏 1 ชิ้นใช้วัสดุต่อกันกี่หน่วย (SizeFee.longPiece) — fee = perPiece ÷ span ต่อหน่วยขาย */
   span?: number;
+}
+
+/** ปัดเต็มหน่วยแบบผ่อนเศษ (ดู SizeFee.roundSlack) — 1e-9 กันเลขทศนิยมของ Number() (16.5000000001) */
+function slackRound(v: number, slack: number): number {
+  const f = Math.floor(v + 1e-9);
+  return v - f > Math.max(0, slack) + 1e-9 ? f + 1 : f;
 }
 
 /**
@@ -1129,7 +1141,8 @@ export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, stri
   const w = num(selections[cfg.widthLabel]);
   const h = num(selections[cfg.heightLabel]);
   if (w == null || h == null) return null; // ช่องกรอกบังคับกรอกก่อนสั่งอยู่แล้ว — ระหว่างพิมพ์ยังไม่คิด
-  const perPiece = tierFee(Math.max(w, h));
+  const longest = Math.max(w, h);
+  const perPiece = tierFee(cfg.roundSlack == null ? longest : slackRound(longest, cfg.roundSlack));
   if (!perPiece) return null;
   if (!cfg.perPiece) return { fee: perPiece, perPiece, pieces: 1 };
   const { sheetW, sheetH, gap = 0 } = cfg.perPiece;
