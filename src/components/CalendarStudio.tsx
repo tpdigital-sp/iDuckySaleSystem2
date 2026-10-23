@@ -250,6 +250,11 @@ interface Props {
    * ลูกค้าทั่วไปยังถูกบังคับใส่รูปเหมือนเดิม
    */
   noPhotoOk?: boolean;
+  /**
+   * 👁 ดูอย่างเดียว (หน้าออเดอร์ปุ่ม "👁 ดูแบบ" ของฝ่ายผลิต · &view=1 · 23 ต.ค. 69) — เปิดดู/เลื่อนหน้า/ซูมได้
+   * ไม่มีปุ่ม ✓ ใช้แบบนี้ / 💾 บันทึก / 🛒 ใส่ตะกร้า และ apply ไม่ทำงาน (กันเผลอแก้แบบของลูกค้า)
+   */
+  readOnly?: boolean;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
@@ -527,6 +532,7 @@ export default function CalendarStudio({
   onEarly,
   mock3d,
   noPhotoOk,
+  readOnly,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
   /** onEarly ล่าสุด — ใช้ใน swapSrc (useCallback deps ว่าง) */
@@ -4489,6 +4495,7 @@ export default function CalendarStudio({
 
   /** skipPhoto = แอดมินยืนยันแล้วว่าใช้แบบที่ยังไม่ใส่รูป (noPhotoOk) — ข้ามด่าน "ช่องรูปยังว่าง" */
   async function apply(force = false, lowOk = false, skipPhoto = false, blankOk = false) {
+    if (readOnly) return;
     if (busy) return;
     /**
      * 🐢→⚡ Illustrator (โปรแกรม Python cutout-py ในเครื่อง) ทำงานเฉพาะตอนเปิดมาจากปุ่ม 🔁 ทำ .ai เลเยอร์ ที่หน้าออเดอร์ (autoOrder)
@@ -6292,8 +6299,17 @@ export default function CalendarStudio({
                 ⬇ .pdf
               </button>
             )}
+            {/* 👁 ดูอย่างเดียว — ไม่มีปุ่มบันทึก/สั่ง */}
+            {readOnly && (
+              <span
+                className="whitespace-nowrap rounded-full bg-violet-50 px-3 py-2 text-xs font-extrabold text-violet-800 ring-1 ring-violet-200"
+                title="เปิดจากหน้าออเดอร์เพื่อดูแบบของลูกค้า — แก้/บันทึกไม่ได้"
+              >
+                👁 ดูอย่างเดียว
+              </span>
+            )}
             {/* ✂️ ไดคัท: ปุ่ม ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า "ปิดไว้ก่อน" = ยังเห็นเป็นปุ่มเทากดไม่ได้ (ผู้ใช้สั่ง 15 ต.ค. 69 "ต้องการเห็นปุ่มเทาๆ ที่ปิดอยู่") */}
-            <button
+            {!readOnly && <button
               type="button"
               onClick={() => {
                 orderAfter.current = false;
@@ -6311,8 +6327,8 @@ export default function CalendarStudio({
               }
             >
               {busy && !onOrder ? busy : "✓ ใช้แบบนี้"}
-            </button>
-            {onOrder && (
+            </button>}
+            {onOrder && !readOnly && (
               <button
                 type="button"
                 onClick={() => {

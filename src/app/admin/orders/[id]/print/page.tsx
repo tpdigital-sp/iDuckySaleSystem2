@@ -37,6 +37,7 @@ import { HIDE_GENERIC_RATE, SpecLines, specEntries, tidySpec } from "@/component
 import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
 import { OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
+import { SideSheetLine } from "@/components/admin/SideSheet";
 
 /** คีย์แฝงใน products ของรายการพิเศษที่ชื่อตรงกับสินค้าร้าน (ไม่ชน id จริง) */
 const SPECIAL_KEY = (name: string) => `special-item:${name}`;
@@ -1029,6 +1030,8 @@ function OrderDocs({
                             🎨 ลูกค้าออกแบบเองบนเว็บ — ไม่ต้องทำแบบใหม่
                           </p>
                         )}
+                        {/* 📮 พิมพ์ 2 ด้าน — ใบไหนหน้า/หลังเป็นรูปไหน (ไฟล์ .pdf/.ai ไม่บอก · OD-261023-1997 · 23 ต.ค. 69) */}
+                        <SideSheetLine it={it} />
                         {/* ♻️ ป้ายใช้ไฟล์เก่า และ 🎨 ภาพลายจากลูกค้า ไม่ขึ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) —
                             รูปแบบงานคอลัมน์ซ้ายคือของที่ต้องเช็ค · บรรทัด "ใช้ไฟล์เก่า:" ยังอยู่ในสเปคตามเดิม */}
                         {it.sampleRequired && (sampleShippedRound(order, i) !== null ? (

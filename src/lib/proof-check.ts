@@ -1,4 +1,6 @@
 import { normalizeUnitWord, proofQtyCheck, proofUnit, type OrderItem, type Proof } from "./admin-data";
+import { PLACEMENT_SPEC_LABEL } from "./design-templates";
+import { specPageTotal } from "./print-sides";
 
 /**
  * ตรวจ "ชุดแบบงานที่จะส่งให้ลูกค้า" ก่อนกดส่ง — อ่านจากชื่อไฟล์ที่ลากเข้ามา + สเปคของรายการ
@@ -208,9 +210,16 @@ export function proofIssues(item: OrderItem, proofs: Proof[], catalog?: ProductW
     })
   );
 
+  // 🎨📑 แบบทีละหน้าที่ระบบใส่ให้จากงานที่ลูกค้าออกแบบเอง (ปฏิทิน ปก+เดือน / โปสการ์ด 2 ด้านหลายใบ) — 1 ลาย = หลายรูปเป็นเรื่องปกติ
+  //   และไม่มีจำนวนต่อรูป (ทั้งชุดคือ 1 ชิ้นงาน) → ข้อ 4/6/7 เตือนผิด "เกินมา 14 รูป · ยังไม่ระบุจำนวน" (OD-261023-1997 · 23 ต.ค. 69)
+  const webPages =
+    proofs.length > 1 &&
+    proofs.every((p) => /ลูกค้าจัดวางเองบนเทมเพลต/.test(p.note ?? "")) &&
+    specPageTotal(item.sel?.[PLACEMENT_SPEC_LABEL]) === proofs.length;
+
   // ── 4) จำนวนลายในสเปค เทียบกับจำนวนรูปที่ส่ง ──
   const spec = specCounts(item);
-  if (spec.designs > 0 && proofs.length !== spec.designs) {
+  if (!webPages && spec.designs > 0 && proofs.length !== spec.designs) {
     // งาน 2 ด้านที่แยกไฟล์หน้า/หลัง = ได้ 2 เท่าของจำนวนลาย ถือว่าปกติ
     const twoSided = spec.sides === 2 && proofs.length === spec.designs * 2;
     if (!twoSided)
@@ -243,7 +252,7 @@ export function proofIssues(item: OrderItem, proofs: Proof[], catalog?: ProductW
 
   // ── 6) ยังไม่ระบุจำนวน = เทียบยอดกับที่ลูกค้าสั่งไม่ได้ ฝ่ายแพ็คก็ไม่รู้ว่าต้องนับกี่ชิ้น ──
   const noQty = proofs.map((p, j) => (p.qty ? -1 : j)).filter((j) => j >= 0);
-  if (noQty.length)
+  if (noQty.length && !webPages)
     list.push({ level: "hint", text: `ยังไม่ระบุจำนวน (${nos(noQty)}) — ใส่ “x3” หรือ “3 ชิ้น” ไว้ในชื่อไฟล์ ระบบเติมให้เอง` });
 
   // ── 7) ยอดรวมเทียบกับที่ลูกค้าสั่ง (คูณ "กี่ชิ้นต่อหน่วย" ให้แล้ว) ──

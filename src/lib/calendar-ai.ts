@@ -30,7 +30,8 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { dieAiCurves } from "@/lib/sleeve-dieline";
-import { fillCurvesEvenOdd } from "@/lib/calendar-impose";
+import { fillCurvesEvenOdd, setPageTags } from "@/lib/calendar-impose";
+import { printPageTag } from "@/lib/print-sides";
 
 export const CUTOUT_PY = "http://localhost:8777";
 const PT = 72 / 25.4;
@@ -398,6 +399,8 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
     pg.node.Resources()?.set(PDFName.of("Properties"), doc.context.obj(props));
   }
   doc.catalog.set(PDFName.of("OCProperties"), doc.context.obj({ OCGs: all, D: { Order: order, ON: all } }));
+  // 📮 ชื่อหน้า Card01-Front/Back (23 ต.ค. 69)
+  if (many) setPageTags(doc, pages.map((p, i) => printPageTag(p.name, i)));
   const bytes = await doc.save({ useObjectStreams: false });
   return new Blob([bytes as unknown as BlobPart], { type: "application/postscript" });
 }
@@ -425,7 +428,7 @@ export async function buildCalendarAi(
   // ทีมหลังบ้าน (local) แต่ไม่ได้ส่งงานให้ Illustrator เลย — จดสถานะไว้ด้วย แยกจากกรณีส่งแล้วพัง
   if (tryLocal && st !== "ready") reportAiFailure({ why: `not-sent: ${st}`, title, pages: pages.length });
   const viaBrowser = async (prefix = "") => {
-    const { buildLegacyAi } = await import("@/lib/legacy-ai");
+    const { buildLegacyAi, legacyCols } = await import("@/lib/legacy-ai");
     return {
       blob: await buildLegacyAi(pages, { title }),
       real: true,
@@ -433,7 +436,9 @@ export async function buildCalendarAi(
       note:
         prefix +
         "สร้าง .ai แยกเลเยอร์ในเบราว์เซอร์ (ไม่ใช้ Illustrator ในเครื่อง) — ชื่อเลเยอร์เป็นภาษาอังกฤษ" +
-        (pages.length > 1 ? ` · ${pages.length} หน้าเรียงบนอาร์ตบอร์ดเดียว (แถวละ 4)` : "") +
+        (pages.length > 1
+          ? ` · ${pages.length} หน้าเรียงบนอาร์ตบอร์ดเดียว (${legacyCols(pages) === 2 ? "แถวละ 1 ใบ: ซ้าย = ด้านหน้า · ขวา = ด้านหลัง" : "แถวละ 4"})`
+          : "") +
         " · ส่วนที่โปร่งแสงครึ่ง ๆ (เงาฟุ้ง/ขอบจาง) กลายเป็นขอบคม",
     };
   };

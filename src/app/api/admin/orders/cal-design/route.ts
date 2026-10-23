@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { calEditUrlOf, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { calSideSplit } from "@/lib/print-sides";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,12 @@ export async function POST(req: Request) {
     const re = new RegExp(`(^|\\s·\\s)(${PLACEMENT_LABEL}:\\s*)([^·\\n]*)`);
     selections = re.test(selections) ? selections.replace(re, (_m, pre: string, head: string) => `${pre}${head}${placement}`) : selections;
   }
+  // 🔄 จอส่งมาแบบ "หน้าแรกของแต่ละลาย + หน้า 2 ขึ้นไปเป็นด้านหลัง" → แยกด้านตามชื่อหน้าในสเปค (โปสการ์ด 2 ด้านหลายใบ · 23 ต.ค. 69)
+  const sides = calSideSplit(
+    spec,
+    urls.filter((u) => !back.includes(u)),
+    back,
+  );
   const keep = <T,>(m?: Record<string, T>) => (m ? Object.fromEntries(Object.entries(m).filter(([u]) => urls.includes(u))) : undefined);
   const items = o.items.map((x, i) =>
     i === index
@@ -66,8 +73,8 @@ export async function POST(req: Request) {
           ...x,
           sel,
           selections,
-          artworkUrls: urls,
-          artworkBackUrls: back.length ? back : undefined,
+          artworkUrls: sides?.urls ?? urls,
+          artworkBackUrls: (sides?.back ?? back).length ? (sides?.back ?? back) : undefined,
           artworkQty: keep(x.artworkQty),
           artworkSize: keep(x.artworkSize),
         }

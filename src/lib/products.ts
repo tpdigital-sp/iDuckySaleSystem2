@@ -1,3 +1,4 @@
+import { calSideSplit, SPEC_LABEL as PRINT_SPEC_LABEL } from "@/lib/print-sides";
 export type CategoryId =
   | "acrylic"
   | "acrylic-bending"
@@ -2550,7 +2551,8 @@ export function artQtyFromSel(
   urls: string[],
   back: string[] = [],
 ): Record<string, number> | undefined {
-  const front = back.length ? urls.slice(0, Math.max(0, urls.length - back.length)) : urls;
+  // ด้านหลังไม่ได้อยู่ท้ายเสมอ (แบบจากจอออกแบบเรียงตามหน้า หน้า/หลังสลับกัน) — ด้านหน้า = ที่ไม่ใช่ด้านหลัง
+  const front = back.length ? urls.filter((u) => !back.includes(u)) : urls;
   const out = { ...(artQtyByUrl(sel[ART_QTY_LABEL], front) ?? {}), ...(artQtyByUrl(sel[ART_BACK_QTY_LABEL], back) ?? {}) };
   return Object.keys(out).length ? out : undefined;
 }
@@ -2690,7 +2692,7 @@ export function parseArtUrls(raw: unknown): string[] {
 
 /**
  * ดึงภาพลายออกจาก selections ของบรรทัดตะกร้า → ฟิลด์ของออเดอร์
- * `urls` = ทุกรูป (หน้าก่อน หลังต่อท้าย) ให้ทุกจอที่นับ/ลบ/ก๊อปใช้ชุดเดียวเหมือนเดิม
+ * `urls` = ทุกรูป (หน้าก่อน หลังต่อท้าย · แบบจากจอออกแบบที่บอกด้าน = เรียงตามหน้าในไฟล์) ให้ทุกจอที่นับ/ลบ/ก๊อปใช้ชุดเดียวเหมือนเดิม
  * `back` = เฉพาะรูปด้านหลัง (เป็นส่วนหนึ่งของ urls) ไว้ติดป้าย "ด้านหลัง"
  * `rest` = selections ที่ตัด 2 คีย์นี้ออกแล้ว (url ยาว ๆ ไม่ควรไปรกใบงาน)
  */
@@ -2702,6 +2704,9 @@ export function splitArtUrls(selections: Record<string, string>): {
   const { [ART_LABEL]: frontRaw, [ART_BACK_LABEL]: backRaw, ...rest } = selections;
   const front = parseArtUrls(frontRaw);
   const back = parseArtUrls(backRaw);
+  // 🔄 แบบจากจอออกแบบที่ชื่อหน้าบอกด้าน (โปสการ์ด 2 ด้านหลายใบ: หน้า1 หลัง1 หน้า2 …) — เรียงตามหน้า + ติดป้ายหลังเฉพาะด้านหลังจริง (23 ต.ค. 69)
+  const sides = calSideSplit(rest[PRINT_SPEC_LABEL], front, back);
+  if (sides) return { urls: sides.urls, back: sides.back, rest };
   return { urls: [...front, ...back], back, rest };
 }
 

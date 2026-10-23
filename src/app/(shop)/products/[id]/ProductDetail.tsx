@@ -4043,6 +4043,8 @@ export default function ProductDetail({
    * ไม่บันทึกกลับเข้าออเดอร์ (ไม่อัปไฟล์ใหญ่ขึ้นที่เก็บ) · ลายที่ &design=n
    */
   const [autoDl, setAutoDl] = useState<"ai" | "pdf" | null>(null);
+  /** 👁 &view=1 (หน้าออเดอร์ปุ่ม "👁 ดูแบบ" ฝ่ายผลิต · 23 ต.ค. 69) — เปิดจอออกแบบดูอย่างเดียว ไม่มีปุ่มบันทึก */
+  const [viewOnly, setViewOnly] = useState(false);
   const [autoDlMsg, setAutoDlMsg] = useState("");
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -4051,6 +4053,7 @@ export default function ProductDetail({
     if (/^OD-[\w-]+$/.test(o) && Number.isInteger(i) && i >= 0) {
       setBackTo({ orderId: o, index: i });
       setRemakeFiles(q.get("files") === "1");
+      setViewOnly(q.get("view") === "1");
       const dl = q.get("dl");
       if (dl === "ai" || dl === "pdf") {
         setAutoDl(dl);
@@ -9832,6 +9835,7 @@ export default function ProductDetail({
               aiExport={fileStaff}
               // 🧑‍💼 โหมดแอดมิน: ข้ามการใส่รูปในจอออกแบบได้ (ถามยืนยัน · สเปคติดป้ายรอรูป) — เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC
               noPhotoOk={staffOrdering}
+              readOnly={viewOnly}
               autoOrder={!!backTo && remakeFiles && fileStaff && editIndex !== null}
               autoDownload={backTo && autoDl && fileStaff && editIndex !== null ? autoDl : undefined}
               onAutoDone={autoDlDone}

@@ -199,7 +199,8 @@ import ShipWithStrip, { ShipWithNoteWarn, ShipWithPicker, ShipWithSuggest, useSh
 import { alreadyShipped, isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
-import { SideSheet } from "@/components/admin/SideSheet";
+import { SideCardsView, SideSheet } from "@/components/admin/SideSheet";
+import { proofSideDesigns } from "@/lib/print-sides";
 import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
@@ -4815,6 +4816,8 @@ export default function AdminOrderDetailPage() {
    *   (ไม่ต้องให้กราฟฟิกทำแบบใหม่ · ลูกค้าไม่ต้องกดอนุมัติซ้ำ — เขาเห็นภาพจริงตอนสั่งแล้ว)
    * ทำเฉพาะคนที่มีสิทธิ์แก้ และเฉพาะรายการที่ยังไม่มีแบบเลย
    */
+  /** 📮 รายการที่กด "แสดงทีละรูป" ในกล่องแบบ (งาน 2 ด้านที่ลูกค้าออกแบบเอง ปกติแสดงเป็นคู่ หน้า | หลัง) */
+  const [proofTiles, setProofTiles] = useState<Record<number, boolean>>({});
   const autoProofDone = useRef(false);
   useEffect(() => {
     if (!order || !mayEdit || demo || autoProofDone.current) return;
@@ -7925,12 +7928,15 @@ export default function AdminOrderDetailPage() {
                               </div>
                             )}
 
-                            {/* 📮 พิมพ์ 2 ด้าน: ใบไหนด้านหน้า/ด้านหลังเป็นรูปไหน — ไฟล์ .pdf/.ai ไม่บอก (OD-261023-1997 · 23 ต.ค. 69) */}
-                            <SideSheet
-                              it={it}
-                              title={`${order.id} · ${it.name}`}
-                              onOpen={(src, caption) => setLightbox({ src, alt: `${it.name} ${caption}`, caption: `${it.name} — ${caption}` })}
-                            />
+                            {/* 📮 พิมพ์ 2 ด้าน: ใบไหนด้านหน้า/ด้านหลังเป็นรูปไหน — ไฟล์ .pdf/.ai ไม่บอก (OD-261023-1997 · 23 ต.ค. 69)
+                                ฝั่งขวามีแบบคู่หน้า|หลังแล้ว (ระบบใส่แบบให้) = ไม่ต้องโชว์ซ้ำ */}
+                            {!proofSideDesigns(proofsOf(it), it.sel?.[PLACEMENT_SPEC_LABEL]) && (
+                              <SideSheet
+                                it={it}
+                                title={`${order.id} · ${it.name}`}
+                                onOpen={(src, caption) => setLightbox({ src, alt: `${it.name} ${caption}`, caption: `${it.name} — ${caption}` })}
+                              />
+                            )}
 
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (
@@ -8383,8 +8389,41 @@ export default function AdminOrderDetailPage() {
                               ? "🚫 รายการนี้ไม่ต้องทำแบบ — จะแนบภาพประกอบก็ได้ ไม่บังคับ (แนบแล้วลูกค้าจะเห็นและกดตรวจตามปกติ)"
                               : "ยังไม่ได้ส่งแบบให้ลูกค้า — ลากไฟล์มาวาง กดปุ่มด้านล่าง หรือกด “ใช้ลายนี้เป็นแบบ” จากฝั่งซ้าย"}
                         </p>
+                      ) : proofSideDesigns(proofs, it.sel?.[PLACEMENT_SPEC_LABEL]) && !proofTiles[i] ? (
+                        /* 📮 งาน 2 ด้านที่ลูกค้าออกแบบเอง — จับคู่เป็นใบ หน้า | หลัง แทนรูปที่ 1–16 ปนกัน (เจ้าของร้านแจ้ง 23 ต.ค. 69 OD-261023-1997) */
+                        <div className="mt-2">
+                          <SideCardsView
+                            designs={proofSideDesigns(proofs, it.sel?.[PLACEMENT_SPEC_LABEL])!}
+                            title={`${order.id} · ${it.name}`}
+                            unit="รูปที่"
+                            note="แต่ละช่อง = 1 ใบ: ซ้ายด้านหน้า · ขวาด้านหลัง · กดรูปเพื่อดูใหญ่ · ไฟล์ .pdf/.ai เรียงตามเลขรูป (คี่ = หน้า · คู่ = หลัง)"
+                            badgeOf={(url) => proofs.find((pf) => pf.url === url)?.review}
+                            onOpen={(url) => {
+                              const j = proofs.findIndex((pf) => pf.url === url);
+                              if (j >= 0) showProof(i, j);
+                            }}
+                          />
+                          {mayProof && (
+                            <button
+                              type="button"
+                              onClick={() => setProofTiles((m) => ({ ...m, [i]: true }))}
+                              className="mt-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              ✏️ แสดงทีละรูป (เปลี่ยน/ลบรูป · ใส่จำนวน)
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <div className="mt-2 flex flex-wrap gap-2">
+                          {proofTiles[i] && proofSideDesigns(proofs, it.sel?.[PLACEMENT_SPEC_LABEL]) && (
+                            <button
+                              type="button"
+                              onClick={() => setProofTiles((m) => ({ ...m, [i]: false }))}
+                              className="w-full rounded-full px-2 py-0.5 text-left text-[10.5px] font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              📮 กลับไปดูแบบคู่ หน้า | หลัง
+                            </button>
+                          )}
                           {proofs.map((pf, j) => (
                             <div
                               key={`${pf.url}-${j}`}

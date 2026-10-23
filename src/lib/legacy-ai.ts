@@ -11,16 +11,27 @@
  *  - XI ลำดับขนาดจริงคือ "w h" (สเปกเขียน h w) · ข้อมูลไบนารีต่อท้ายบรรทัด XI ได้เลย (bin-ascii = 1)
  *  - ช่องโปร่งใส (AlphaChannelCount) ไม่รองรับ → ใช้ขอบโปร่งใสที่ลากเป็นเส้นโค้งเป็นมาสก์แทน (ขอบนุ่ม/เงาฟุ้ง = ขอบคม)
  *  - ชื่อเลเยอร์อ่านเป็น MacRoman → ภาษาไทยเพี้ยน ต้องตั้งชื่อภาษาอังกฤษ (englishLayerName)
- *  - ไฟล์มีหน้าเดียว (อาร์ตบอร์ดเดียว) → หลายหน้าเรียงเป็นตาราง 4 ต่อแถวบนอาร์ตบอร์ดเดียว
+ *  - ไฟล์มีหน้าเดียว (อาร์ตบอร์ดเดียว) → หลายหน้าเรียงเป็นตาราง 4 ต่อแถวบนอาร์ตบอร์ดเดียว (งาน 2 ด้าน = แถวละใบ หน้า|หลัง · legacyCols)
  *  - รูปไม่บีบอัด → ไฟล์ใหญ่กว่าที่ Illustrator บันทึกเองหลายเท่า (เจ้าของร้านรับได้)
  */
 import type { AiPage } from "@/lib/calendar-ai";
 import { traceAlphaMm, type CutCurve } from "@/lib/diecut-engine";
+import { pageSideOf } from "@/lib/print-sides";
 
 const PT = 72 / 25.4;
 const GAP_MM = 10;
 const COLS = 4;
 const KAPPA = 0.5522847498;
+
+/**
+ * 📮 จำนวนช่องต่อแถว — งาน 2 ด้าน (ชื่อหน้าสลับ ด้านหน้า/ด้านหลัง) = แถวละ 1 ใบ ซ้ายหน้า ขวาหลัง (23 ต.ค. 69 OD-261023-1997)
+ * เดิมแถวละ 4 ทุกงาน → ไฟล์ .ai ดูไม่ออกว่าช่องไหนด้านหน้า/ด้านหลัง (ชื่อหน้าเขียนบนอาร์ตบอร์ดไม่ได้ · ชื่อไทยเพี้ยน)
+ */
+export function legacyCols(pages: { name: string }[]): number {
+  const n = pages.length;
+  if (n >= 2 && n % 2 === 0 && pages.every((p, i) => pageSideOf(p.name) === (i % 2 ? "back" : "front"))) return 2;
+  return Math.min(COLS, n);
+}
 
 /** พิกเซลของภาพชั้น (RGBA ไม่ premultiply) */
 export interface Pixels {
@@ -177,7 +188,7 @@ export async function buildLegacyAi(
 ): Promise<Blob> {
   const decode = opts.decode ?? decodeBlob;
   const n = pages.length;
-  const cols = Math.min(COLS, n);
+  const cols = legacyCols(pages);
   const cellW = Math.max(...pages.map((p) => p.wMm));
   const cellH = Math.max(...pages.map((p) => p.hMm));
   const rows = Math.ceil(n / cols);

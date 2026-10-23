@@ -13,7 +13,8 @@
  * ชื่อไฟล์แบบร้าน "01_000_<ชื่องาน> (2ด้าน) = N ชิ้น.pdf" · "ปฏิทิน" = โหมดปฏิทิน · "(2ด้าน)" = เปิดหน้า-หลัง
  */
 
-import { PDFDocument, PDFOperator, PDFOperatorNames, PDFPage, appendBezierCurve, closePath, moveTo, popGraphicsState, pushGraphicsState, rgb, setFillingRgbColor, type PDFImage } from "pdf-lib";
+import { PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFPage, PDFString, appendBezierCurve, closePath, moveTo, popGraphicsState, pushGraphicsState, rgb, setFillingRgbColor, type PDFImage } from "pdf-lib";
+import { printPageTag } from "@/lib/print-sides";
 
 const PT = 72 / 25.4;
 
@@ -96,6 +97,14 @@ export async function buildPieceFiles(input: {
  * ทุกหน้าที่จะพิมพ์เรียงตามลำดับในไฟล์เดียว (ขนาดรวมตัดตก · ตั้ง TrimBox ตรงเส้นตัด) + หน้าสุดท้าย = เส้นไดคัท
  */
 /**
+ * 📮 ชื่อหน้าใน PDF (PageLabels) เช่น "Card01-Front" / "Card01-Back" — Acrobat/Illustrator โชว์ในพาเนลหน้าแทนเลข 1 2 3
+ * ไฟล์ทีละหน้าไม่มีที่ว่างเขียนป้ายบนงาน (เต็มตัดตก) → บอกด้านผ่านชื่อหน้าแทน (OD-261023-1997 · 23 ต.ค. 69)
+ */
+export function setPageTags(doc: PDFDocument, tags: string[]) {
+  doc.catalog.set(PDFName.of("PageLabels"), doc.context.obj({ Nums: tags.flatMap((t, i) => [i, doc.context.obj({ P: PDFString.of(t) })]) }));
+}
+
+/**
  * ⬜ ถมรูปทรง (เส้นโค้งเบซิเยร์ มม. · มุมซ้ายบน) ลงหน้า PDF แบบ even-odd — วงในกลายเป็นรู
  * (ตัวลากเส้นรองขาวให้วงนอก/รูทิศเดียวกัน · drawSvgPath ของ pdf-lib ถม nonzero รูจะทึบ · 21 ต.ค. 69)
  */
@@ -159,6 +168,8 @@ export async function buildPrintPdf(input: {
     [...input.pages.map((p, i) => `${i + 1}.${p.name}`), ...whites.map((wp, i) => `${n0 + i + 1}.${wp.name}`), `${n0 + whites.length + 1}.เส้นไดคัท`].join(" · "),
   );
   doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
+  const tags = input.pages.map((p, i) => printPageTag(p.name, i));
+  setPageTags(doc, [...tags, ...whites.map((_, i) => `White-${i + 1}`), "CutLine"]);
   const bytes = await doc.save();
   return new File([bytes as BlobPart], name, { type: "application/pdf" });
 }
