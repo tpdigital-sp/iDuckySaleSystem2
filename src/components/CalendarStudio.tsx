@@ -4447,7 +4447,7 @@ export default function CalendarStudio({
   }
 
   /** skipPhoto = แอดมินยืนยันแล้วว่าใช้แบบที่ยังไม่ใส่รูป (noPhotoOk) — ข้ามด่าน "ช่องรูปยังว่าง" */
-  async function apply(force = false, lowOk = false, skipPhoto = false) {
+  async function apply(force = false, lowOk = false, skipPhoto = false, blankOk = false) {
     if (busy) return;
     /**
      * 🐢→⚡ Illustrator (โปรแกรม Python cutout-py ในเครื่อง) ทำงานเฉพาะตอนเปิดมาจากปุ่ม 🔁 ทำ .ai เลเยอร์ ที่หน้าออเดอร์ (autoOrder)
@@ -4485,7 +4485,7 @@ export default function CalendarStudio({
         title: "ยังไม่ได้ใส่รูป",
         body: `${where} — โหมดแอดมินข้ามได้: ไฟล์จะออกมาเป็นช่องว่าง และสเปคจะติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกใส่รูปที่ลูกค้าส่งมาทางไลน์ทีหลัง`,
         ok: "ข้ามการใส่รูป — ใช้แบบนี้",
-        run: () => void apply(force, lowOk, true),
+        run: () => void apply(force, lowOk, true, blankOk),
       });
       return "ask";
     };
@@ -4500,17 +4500,23 @@ export default function CalendarStudio({
       }
     }
     // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
-    if (design.noBorrow) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(resolve(v)).optional && lay(resolve(v)).photo && !photoOf(lay(resolve(v)), design, imgs));
-      if (empty) {
-        const g = noPhotoGate(`${vname(empty)} ยังไม่มีรูป`);
-        if (g === "ask") return;
-        if (g === "stop") {
-          setPageIdx(vpages.indexOf(empty));
-          setTool("photo");
-          setErr(`${vname(empty)} ยังไม่มีรูป — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปจากคลังด้านซ้ายมาวาง`);
-          return;
-        }
+    // ไม่บังคับใส่ครบทุกหน้าแล้ว (เจ้าของร้านแจ้ง 23 ต.ค. 69 "ไม่จำเป็นต้องใส่ภาพครบก็ได้") — ถามยืนยัน 1 ครั้งแล้วทำต่อ
+    if (design.noBorrow && !skipPhoto && !blankOk) {
+      const empties = printPages.filter((v) => v.page.kind !== "postback" && !lay(resolve(v)).optional && lay(resolve(v)).photo && !photoOf(lay(resolve(v)), design, imgs));
+      if (empties.length) {
+        setPageIdx(vpages.indexOf(empties[0]));
+        setAsk({
+          icon: "🖼",
+          title: `ยังไม่ได้ใส่รูป ${empties.length} หน้า`,
+          body:
+            `${empties
+              .slice(0, 6)
+              .map(vname)
+              .join(" · ")}${empties.length > 6 ? " …" : ""} — หน้าที่ไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง (ไม่ต้องใส่ครบทุกหน้าก็ได้)`,
+          ok: "ใช้แบบนี้ต่อ",
+          run: () => void apply(force, lowOk, skipPhoto, true),
+        });
+        return;
       }
     }
     // ป้าย "ยังไม่ได้ใส่รูป" ในสเปค = ยืนยันข้ามมาแล้ว และช่องรูปยังว่างจริงตอนประกอบไฟล์ (เงื่อนไขเดียวกับ 2 ด่านด้านบน · ไม่ดู optional
@@ -4574,7 +4580,7 @@ export default function CalendarStudio({
               .join(" · ")}${lows.length > 6 ? " …" : ""} — ` +
             `พิมพ์ออกมาอาจแตก/เบลอ แนะนำใช้รูปไฟล์ใหญ่ขึ้น หรือย่อรูปให้เล็กลง (งานนี้พิมพ์ ${fmt.dpi} DPI)`,
           ok: "ใช้แบบนี้ต่อ",
-          run: () => void apply(true, true, skipPhoto),
+          run: () => void apply(true, true, skipPhoto, blankOk),
         });
         return;
       }
