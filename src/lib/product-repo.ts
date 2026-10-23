@@ -305,6 +305,38 @@ export function fetchProductsLite(): Promise<Product[]> {
   return liteInflight;
 }
 
+/**
+ * ข้อความค้นหาเพิ่มเติมของสินค้า (คำอธิบาย + คำค้น SEO) — โหลดแยกจากชุด lite เฉพาะตอนลูกค้าใช้ช่องค้นหา
+ * ชุด lite ไม่มีคำอธิบาย (ใช้ทุกหน้า หนักไม่ได้) → ค้นได้แค่ชื่อ · "กรอบรูปแคนวาส" เลยหา Canvas Frame ไม่เจอ (23 ต.ค. 69)
+ * ~220KB ก่อนบีบอัด · แชร์คำขอ/แคชทั้งแท็บ
+ */
+export type SearchExtra = Map<string, { desc: string; kw: string }>;
+let searchExtraCache: Promise<SearchExtra> | null = null;
+export function fetchSearchExtra(): Promise<SearchExtra> {
+  if (!searchExtraCache) {
+    searchExtraCache = loadSearchExtra().catch(() => {
+      searchExtraCache = null;
+      return new Map();
+    });
+  }
+  return searchExtraCache;
+}
+async function loadSearchExtra(): Promise<SearchExtra> {
+  const sb = getSupabase();
+  const m: SearchExtra = new Map();
+  if (!sb) {
+    for (const p of mergedProducts()) m.set(p.id, { desc: p.description || "", kw: (p.seo?.keywords ?? []).join(" ") });
+    return m;
+  }
+  const { data, error } = await sb.from("products").select("id,desc:data->>description,kw:data->seo->keywords");
+  if (error || !data) throw error ?? new Error("no data");
+  for (const r of data as unknown as { id: string; desc: string | null; kw: unknown }[]) {
+    if (String(r.id).startsWith("__")) continue;
+    m.set(r.id, { desc: r.desc || "", kw: Array.isArray(r.kw) ? r.kw.join(" ") : "" });
+  }
+  return m;
+}
+
 async function loadProductsLite(): Promise<Product[]> {
   const sb = getSupabase();
   if (!sb) return mergedProducts();

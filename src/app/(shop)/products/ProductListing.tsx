@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { productPath, type CategoryId, type Product } from "@/lib/products";
 import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
-import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
+import { cachedProductsLite, fetchProductsLite, fetchSearchExtra, type SearchExtra } from "@/lib/product-repo";
+import { matchScore, productSearchFields } from "@/lib/site-search";
 import ShopProductCard from "@/components/ShopProductCard";
 import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON } from "@/lib/cat-groups";
@@ -57,16 +58,25 @@ export default function ProductListing({
     };
   }, []);
 
+  // คำอธิบาย/คำค้น SEO ให้ค้นเจอเกินชื่อสินค้า (เช่น "กรอบรูปแคนวาส" → Canvas Frame) — โหลดเมื่อมีคำค้นเท่านั้น
+  const [extra, setExtra] = useState<SearchExtra>();
+  const searching = search.trim() !== "";
+  useEffect(() => {
+    if (searching) void fetchSearchExtra().then(setExtra);
+  }, [searching]);
+
   const filtered = useMemo(() => {
     // สินค้าที่ปิดการมองเห็นไว้ (หลังบ้าน) ไม่ต้องขึ้นในหน้ารายการ/ค้นหา
     let list = (all ?? []).filter((p) => !p.hidden);
     if (category !== "all") list = list.filter((p) => p.category === category);
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
+    const score = new Map<string, number>();
     if (q) {
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
-      );
+      for (const p of list) {
+        const catName = cats.find((c) => c.id === p.category)?.name ?? "";
+        score.set(p.id, matchScore(productSearchFields(p, catName, extra), q));
+      }
+      list = list.filter((p) => score.get(p.id)! >= 0);
     }
     const sorted = [...list];
     switch (sort) {
@@ -83,8 +93,10 @@ export default function ProductListing({
         sorted.sort((a, b) => b.rating - a.rating);
         break;
     }
+    // ค้นหาอยู่ = ตัวที่ตรงชื่อขึ้นก่อนตัวที่เจอจากคำอธิบาย (ในกลุ่มเดียวกันเรียงตามที่เลือก)
+    if (q) sorted.sort((a, b) => score.get(a.id)! - score.get(b.id)!);
     return sorted;
-  }, [all, category, search, sort]);
+  }, [all, category, search, sort, extra, cats]);
 
   /**
    * ดูรวมทุกหมวด (ไม่ได้เลือกหมวด/ไม่ได้ค้นหา) = ซอยเป็นช่วง ๆ ตามหมวด

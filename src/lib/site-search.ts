@@ -3,8 +3,11 @@
  * และหน้าค้นหาเต็มจอ (มือถือ) — พอร์ตจาก IDSearch ในไฟล์ต้นแบบ LADNDING PAGE.html
  *
  * ต้นแบบสร้างดัชนีจาก DOM ที่พิมพ์ตายตัว · ของจริงสร้างจากหมวด + สินค้าในฐานข้อมูล (buildSearchIndex)
- * จัดลำดับ: ขึ้นต้นด้วยคำที่พิมพ์ > มีคำนั้นในชื่อ > เจอจากคำพ้อง/ชื่อหมวด · คะแนนเท่ากันให้ชื่อสั้นกว่าขึ้นก่อน
+ * จัดลำดับ: ขึ้นต้นด้วยคำที่พิมพ์ > มีคำนั้นในชื่อ > เจอจากคำพ้อง/ชื่อหมวด > คำค้น SEO > คำอธิบายสินค้า
+ *   > พิมพ์หลายคำแล้วเจอครบทุกคำ (สลับลำดับได้) · คะแนนเท่ากันให้ชื่อสั้นกว่าขึ้นก่อน
+ * เทียบแบบไม่สนช่องว่าง ("กรอบรูป แคนวาส" = "กรอบรูปแคนวาส" · "canvasframe" = "Canvas Frame")
  */
+import type { SearchExtra } from "@/lib/product-repo";
 import type { ShopCategory } from "@/lib/categories";
 import { accentOf, CAT_ICON } from "@/lib/cat-groups";
 import { formatPrice, priceRange, productPath, type Product } from "@/lib/products";
@@ -23,9 +26,11 @@ export interface SearchHit {
   /** ป้ายท้ายแถว: "หมวดหมู่" หรือชื่อหมวดของสินค้า */
   type: string;
   kind: "category" | "product";
-  /** ข้อความที่เตรียมไว้ค้น (ตัวพิมพ์เล็ก + คำพ้อง) */
+  /** ข้อความที่เตรียมไว้ค้น (norm: ตัวพิมพ์เล็ก ไม่มีช่องว่าง) — ชื่อ / ชื่อ+หมวด+คำพ้อง / คำค้น SEO / คำอธิบาย */
   _name: string;
   _hay: string;
+  _kw: string;
+  _desc: string;
 }
 
 /** คำพ้อง/คำสะกดอื่นที่ลูกค้ามักพิมพ์ (ชุดเดียวกับต้นแบบ) */
@@ -49,6 +54,8 @@ const SYNONYMS: [string, string][] = [
   ["แก้ว", "mug cup แก้ว แก้วน้ำ"],
   ["เมาส์แพด", "mousepad mouse pad แผ่นรองเมาส์"],
   ["กรอบรูป", "frame canvas กรอบรูป"],
+  ["canvas", "แคนวาส แคนวัส ผ้าใบ กรอบรูป"],
+  ["frame", "เฟรม กรอบ กรอบรูป"],
   ["เคส", "case เคส เคสมือถือ"],
   ["ของขวัญ", "gift ของขวัญ ของฝาก"],
   ["ของพรีเมียม", "premium ของพรีเมียม ของแจก"],
@@ -57,7 +64,8 @@ const SYNONYMS: [string, string][] = [
 ];
 function synonymsFor(name: string): string {
   let extra = "";
-  for (const [k, v] of SYNONYMS) if (name.includes(k)) extra += " " + v;
+  const n = name.toLowerCase();
+  for (const [k, v] of SYNONYMS) if (n.includes(k)) extra += " " + v;
   return extra.toLowerCase();
 }
 
@@ -85,8 +93,11 @@ export function categoryIcon(c: ShopCategory): string {
   return c.image || CAT_ICON[c.id] || "";
 }
 
-/** สร้างดัชนีค้นหา: หมวดทุกหมวด + สินค้าทุกตัว (ไม่นับที่ซ่อน) */
-export function buildSearchIndex(cats: ShopCategory[], products: Product[]): SearchHit[] {
+/** ตัวพิมพ์เล็ก + ตัดช่องว่างทั้งหมด — ลูกค้าเว้นวรรคไม่ตรงกับชื่อในร้านบ่อย */
+const norm = (s: string) => (s || "").toLowerCase().replace(/\s+/g, "");
+
+/** สร้างดัชนีค้นหา: หมวดทุกหมวด + สินค้าทุกตัว (ไม่นับที่ซ่อน) · extra = คำอธิบาย/คำค้น SEO (โหลดทีหลังได้) */
+export function buildSearchIndex(cats: ShopCategory[], products: Product[], extra?: SearchExtra): SearchHit[] {
   const visible = cats.filter((c) => !c.hidden);
   const catIndex = new Map(visible.map((c, i) => [c.id, i] as const));
   const catHits: SearchHit[] = visible.map((c, i) =>
@@ -100,7 +111,7 @@ export function buildSearchIndex(cats: ShopCategory[], products: Product[]): Sea
       price: "",
       type: "หมวดหมู่",
       kind: "category",
-    })
+    }, c.description || "")
   );
   const prodHits: SearchHit[] = products
     .filter((p) => !p.hidden)
@@ -117,25 +128,50 @@ export function buildSearchIndex(cats: ShopCategory[], products: Product[]): Sea
         price: startPriceLabel(p),
         type: cat?.name.split(/\s*[—–]\s*/)[0] ?? "สินค้า",
         kind: "product",
-      });
+      }, extra?.get(p.id)?.desc ?? p.description ?? "", extra?.get(p.id)?.kw ?? (p.seo?.keywords ?? []).join(" "));
     });
   return [...catHits, ...prodHits];
 }
-function mk(h: Omit<SearchHit, "_name" | "_hay">): SearchHit {
+function mk(h: Omit<SearchHit, "_name" | "_hay" | "_kw" | "_desc">, desc = "", kw = ""): SearchHit {
   const name = h.name || "";
-  return { ...h, _name: name.toLowerCase(), _hay: (name + " " + (h.type || "")).toLowerCase() + synonymsFor(name) };
+  return { ...h, _name: norm(name), _hay: norm(name + " " + (h.type || "") + synonymsFor(name)), _kw: norm(kw), _desc: norm(desc) };
+}
+
+/**
+ * คะแนนความตรงของคำค้น (ยิ่งน้อยยิ่งตรง · -1 = ไม่ตรง)
+ * 0 ชื่อขึ้นต้น · 1 อยู่ในชื่อ · 2 คำพ้อง/หมวด · 3 คำค้น SEO · 4 คำอธิบาย · 5 พิมพ์หลายคำ เจอครบทุกคำ
+ */
+export function matchScore(it: Pick<SearchHit, "_name" | "_hay" | "_kw" | "_desc">, q: string): number {
+  const t = norm(q);
+  if (!t) return -1;
+  if (it._name.startsWith(t)) return 0;
+  if (it._name.includes(t)) return 1;
+  if (it._hay.includes(t)) return 2;
+  if (it._kw.includes(t)) return 3;
+  if (it._desc.includes(t)) return 4;
+  const words = (q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const all = it._hay + " " + it._kw + " " + it._desc;
+    if (words.every((w) => all.includes(w))) return 5;
+  }
+  return -1;
+}
+
+/** ข้อความค้นหาของสินค้าตัวเดียว (ใช้กรองหน้ารายการสินค้า ?q=) */
+export function productSearchFields(p: Product, catName = "", extra?: SearchExtra) {
+  return mk(
+    { name: p.name, href: "", icon: "", img: "", photo: "", accent: "", price: "", type: catName, kind: "product" },
+    extra?.get(p.id)?.desc ?? p.description ?? "",
+    extra?.get(p.id)?.kw ?? (p.seo?.keywords ?? []).join(" ")
+  );
 }
 
 /** ค้นหา — คืนรายการเรียงตามความตรง (ว่าง = ไม่พิมพ์อะไร) */
 export function querySearch(index: SearchHit[], q: string): SearchHit[] {
-  const t = (q || "").trim().toLowerCase();
-  if (!t) return [];
+  if (!norm(q)) return [];
   const scored: { it: SearchHit; sc: number }[] = [];
   for (const it of index) {
-    let sc = -1;
-    if (it._name.startsWith(t)) sc = 0;
-    else if (it._name.includes(t)) sc = 1;
-    else if (it._hay.includes(t)) sc = 2;
+    const sc = matchScore(it, q);
     if (sc >= 0) scored.push({ it, sc });
   }
   scored.sort((a, b) => a.sc - b.sc || a.it._name.length - b.it._name.length);

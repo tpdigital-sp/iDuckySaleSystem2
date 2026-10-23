@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_CATEGORIES, fetchCategories, type ShopCategory } from "@/lib/categories";
-import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
+import { cachedProductsLite, fetchProductsLite, fetchSearchExtra, type SearchExtra } from "@/lib/product-repo";
 import type { Product } from "@/lib/products";
 import { buildSearchIndex, type SearchHit } from "@/lib/site-search";
 
@@ -14,16 +14,19 @@ import { buildSearchIndex, type SearchHit } from "@/lib/site-search";
 export function useShopCatalog(active: boolean) {
   const [cats, setCats] = useState<ShopCategory[]>(DEFAULT_CATEGORIES);
   const [products, setProducts] = useState<Product[]>(() => cachedProductsLite() ?? []);
+  /** คำอธิบาย/คำค้น SEO — มาทีหลังชุด lite ระหว่างนั้นค้นได้จากชื่อไปก่อน */
+  const [extra, setExtra] = useState<SearchExtra>();
   const asked = useRef(false);
   useEffect(() => {
     if (!active || asked.current) return;
     asked.current = true;
     void fetchCategories().then((list) => setCats(list));
     void fetchProductsLite().then((ps) => setProducts(ps.filter((p) => !p.hidden)));
+    void fetchSearchExtra().then(setExtra);
   }, [active]);
 
   const visibleCats = useMemo(() => cats.filter((c) => !c.hidden), [cats]);
-  const index: SearchHit[] = useMemo(() => buildSearchIndex(cats, products), [cats, products]);
+  const index: SearchHit[] = useMemo(() => buildSearchIndex(cats, products, extra), [cats, products, extra]);
   /** สินค้า 5 ตัวแรกของแต่ละหมวด (เรียงตามลำดับจริงในร้าน) */
   const byCat = useMemo(() => {
     const m = new Map<string, Product[]>();
