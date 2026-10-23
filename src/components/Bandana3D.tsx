@@ -246,20 +246,28 @@ export default function Bandana3D({
         // รัศมีคอ R: tie/button ขอบคอพันรอบพอดี (ปลายชน/เกยท้ายทอย) · strap คลุมด้านหน้าราว 3/4 รอบ
         //   (รอบแรก strap คลุมแค่ 0.56 รอบ คอหุ่นอ้วนเกินผ้า · 23 ต.ค. 69 "สัดส่วนแบบใส่กับสาย")
         const R = style === "strap" ? Math.min(Wt / (2 * Math.PI * 0.62), Dp * 0.42) : Wt / (2 * Math.PI * (style === "tie" ? 0.94 : 1.04));
-        /** อกกว้างกว่าคอ: รัศมีลำตัวที่ T_CHEST = R + Dp × FLARE × T_CHEST · ใต้นั้นชายผ้าห้อยพ้นอก */
-        const FLARE = 0.26;
+        /**
+         * 📏 สัดส่วนหุ่นนับจากรัศมีคอ R ทุกชิ้น (ลูกหมานั่ง) — อก ≈ 1.35R · หัว 1.35R · ขาหน้าสูงถึงใต้อก 2.5R · สะโพก 1.25R
+         *   (รอบก่อนอก/สะโพกคิดจากความลึกผ้า ตัวบวมใหญ่ หัวเล็ก ขาสั้น · 23 ต.ค. 69 "มันยังไม่ได้สัดส่วน")
+         * อกกว้างกว่าคอ: รัศมีลำตัวที่ T_CHEST = R + Dp × FLARE × T_CHEST · ใต้นั้นชายผ้าห้อยพ้นอก
+         */
         const T_CHEST = 0.62;
+        const FLARE = (0.35 * R) / (T_CHEST * Dp);
         /** ระยะผิวหุ่นถึงผ้า (ผ้า 2 ชั้นหนากว่า + สายสอดในช่องพับ) */
         const GAP = folded ? 3.5 : 2;
         const bodyR = (t: number) => R - GAP + Dp * FLARE * Math.min(t, T_CHEST);
-        const yNeck = Dp * 1.18;
+        /** ใต้อกสูงจากพื้น (ความยาวขาหน้าที่เห็น) */
+        const LEG_H = R * 2.5;
+        const yNeck = LEG_H + T_CHEST * Dp;
         // หัวหุ่น: คอสั้นหนาแบบสุนัขจริง (รอบแรกคอยาวเหมือนขวด) · หัวยื่นมาหน้านิด ๆ
-        const neckLen = R * 0.35;
-        const head = new THREE.Vector3(0, yNeck + neckLen + R * 0.78, -R * 0.62);
-        const topY = head.y + R * 1.15;
-        const bottomY = yNeck - Dp;
+        const neckLen = R * 0.3;
+        const HR = R * 1.35;
+        const head = new THREE.Vector3(0, yNeck + neckLen + HR * 0.78, -R * 0.55);
+        const topY = head.y + HR;
+        const bottomY = Math.min(0, yNeck - Dp);
         const Ht = topY - bottomY;
-        const span = Math.max(Ht, R * 3.2);
+        // มองข้างลำตัวยาวไปข้างหลัง ~4.6R
+        const span = Math.max(Ht, R * 5);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -282,7 +290,7 @@ export default function Bandana3D({
         scene.environmentIntensity = 0.55;
 
         const camera = new THREE.PerspectiveCamera(28, 1, 1, 20000);
-        const BASE_DIST = span * 2.55;
+        const BASE_DIST = span * 2.25;
 
         const sun = new THREE.DirectionalLight(0xffffff, 1.1);
         sun.castShadow = true;
@@ -468,12 +476,12 @@ export default function Bandana3D({
             b.position.set(head.x + x, head.y + y, head.z + z);
             return b;
           };
-          ball(R * 1.15, plush, 0, 0, 0, 1, 0.94, 1.02);
-          ball(R * 0.62, plush, 0, -R * 0.4, R * 0.92, 0.88, 0.7, 1.08);
-          ball(R * 0.16, glossy, 0, -R * 0.22, R * 1.58, 1.35, 0.9, 1);
+          ball(HR, plush, 0, 0, 0, 1, 0.94, 1.02);
+          ball(HR * 0.55, plush, 0, -HR * 0.36, HR * 0.82, 0.9, 0.72, 1.1);
+          ball(HR * 0.14, glossy, 0, -HR * 0.2, HR * 1.4, 1.35, 0.9, 1);
           for (const sx of [-1, 1]) {
-            ball(R * 0.12, glossy, sx * R * 0.42, R * 0.2, R * 0.99);
-            const ear = ball(R * 0.52, plushDark, sx * R * 1.0, -R * 0.2, -R * 0.12, 0.55, 1.2, 0.24);
+            ball(HR * 0.1, glossy, sx * HR * 0.38, HR * 0.17, HR * 0.87);
+            const ear = ball(HR * 0.48, plushDark, sx * HR * 0.9, -HR * 0.18, -HR * 0.1, 0.55, 1.2, 0.24);
             ear.rotation.set(0.1, sx * -0.25, sx * 0.3);
           }
 
@@ -484,27 +492,26 @@ export default function Bandana3D({
             b.position.set(x, y, z);
             return b;
           };
-          const lr = rc * 0.24;
-          const legTop = yB + rc * 0.15;
+          const lr = R * 0.4;
+          const legTop = yB + R * 0.4;
           for (const sx of [-1, 1]) {
-            const lx = sx * rc * 0.42;
-            const lz = -R + rc * 0.5;
+            const lx = sx * R * 0.6;
+            const lz = -R + R * 0.6;
             at(new THREE.CapsuleGeometry(lr, Math.max(1, legTop - lr * 2), 8, 24), plush, lx, legTop / 2 + lr * 0.4, lz);
             at(new THREE.SphereGeometry(lr * 1.08, 32, 16), plush, lx, lr * 0.62, lz + lr * 0.55, 1, 0.62, 1.35);
             // นิ้วเท้า 3 ร่องจาง ๆ = ลูกเล็กสีเข้มกว่านิดหน่อย
             for (const k of [-1, 0, 1]) at(new THREE.SphereGeometry(lr * 0.22, 16, 10), plushDark, lx + k * lr * 0.42, lr * 0.5, lz + lr * 1.85, 1, 0.7, 0.6);
           }
-          // สะโพก + ต้นขาหลัง (นั่งพับขา) — อยู่หลังลำตัว ต่อจากใต้อก
-          const hz = -R - rc * 1.05;
-          at(new THREE.SphereGeometry(rc, 48, 32), plush, 0, rc * 0.92, hz, 1.12, 0.95, 1.25);
-          // หลัง/ท้อง เชื่อมอกกับสะโพก (มองข้างไม่เป็นสองก้อนแยกกัน)
-          at(new THREE.SphereGeometry(rc, 48, 32), plush, 0, (yB + rc * 0.92) / 2 + rc * 0.15, (-R + hz) / 2 - rc * 0.05, 0.98, 0.95, 1.15);
+          // สะโพก + ต้นขาหลัง (นั่งพับขา) อยู่หลังอก 2R · ลำตัวเชื่อมอก→สะโพก (มองข้างไม่เป็นสองก้อนแยกกัน)
+          const hz = -R - R * 2.0;
+          at(new THREE.SphereGeometry(R * 1.25, 48, 32), plush, 0, R * 1.15, hz, 1.1, 0.95, 1.15);
+          at(new THREE.SphereGeometry(R * 1.2, 48, 32), plush, 0, (yB + R * 0.5 + R * 1.15) / 2, (-R + hz) / 2, 1.05, 1.0, 1.45);
           for (const sx of [-1, 1]) {
-            at(new THREE.SphereGeometry(rc * 0.62, 40, 24), plush, sx * rc * 0.82, rc * 0.62, hz + rc * 0.25, 0.75, 0.95, 1.2);
-            at(new THREE.SphereGeometry(lr * 1.05, 32, 16), plush, sx * rc * 0.92, lr * 0.6, hz + rc * 0.95, 1, 0.6, 1.4);
+            at(new THREE.SphereGeometry(R * 0.8, 40, 24), plush, sx * R * 0.95, R * 0.85, hz + R * 0.3, 0.7, 0.95, 1.2);
+            at(new THREE.SphereGeometry(lr, 32, 16), plush, sx * R * 1.0, lr * 0.6, hz + R * 1.15, 1, 0.6, 1.4);
           }
           // หางม้วนขึ้นสั้น ๆ
-          const tail = at(new THREE.CapsuleGeometry(lr * 0.45, rc * 0.7, 6, 16), plushDark, 0, rc * 0.75, hz - rc * 1.3);
+          const tail = at(new THREE.CapsuleGeometry(R * 0.18, R * 0.9, 6, 16), plushDark, 0, R * 1.1, hz - R * 1.35);
           tail.rotation.x = -0.9;
         }
 
@@ -593,7 +600,7 @@ export default function Bandana3D({
         }
 
         // เล็งต่ำกว่ากลางนิด — ปลายผ้าไม่จมใต้แถบคำแนะนำล่างจอ
-        const lookY = (topY + bottomY) / 2 - Ht * 0.06;
+        const lookY = bottomY + Ht * 0.46;
         const place = () => {
           const w = box.clientWidth || 1;
           const h = box.clientHeight || 1;
