@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BANDANA_STYLE_TH, BANDANA_VIEW_TH, type BandanaMock, type BandanaView } from "@/lib/bandana-mock";
+import { ASSET, FRAMES, PH, PW, loadImg, renderBandanaFrame } from "@/lib/bandana-photo";
 
 /** มุมกล้อง — yaw รอบแกนตั้ง (หน้าผ้าหันไป +z) · pitch ก้ม/เงย */
 const VIEW_CAM: Record<BandanaView, { yaw: number; pitch: number }> = {
@@ -179,6 +180,12 @@ export default function BandanaFabric3D({
   onClose: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
+  /**
+   * 🐶 แผงหมาข้างผ้า 3D (เจ้าของร้านสั่ง 23 ต.ค. 69 "อยากให้มีโมเดลหมาข้าง ๆ ด้วย · ฉันหมายถึง 3D ด้วย")
+   * รูปพุดเดิ้ลมุมหน้าใส่ผ้าลายลูกค้า (lib/bandana-photo · ชั้นหน้าของผืนพับ) — มุมหน้าไม่เห็นปมผูก จึงใช้กับแบบกระดุม/สายได้
+   */
+  const dogRef = useRef<HTMLCanvasElement>(null);
+  const [dogReady, setDogReady] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [spin, setSpin] = useState(false);
   const [view, setView] = useState<BandanaView>("front");
@@ -208,6 +215,24 @@ export default function BandanaFabric3D({
   useEffect(() => {
     cam.current.spin = spin;
   }, [spin]);
+
+  useEffect(() => {
+    let dead = false;
+    Promise.all([loadImg(`${ASSET}/poodle360-front.webp`), loadImg(`${ASSET}/poodle360-front-mask.png`)])
+      .then(([front, mask]) => {
+        const cv = dogRef.current;
+        if (dead || !cv) return;
+        const frame = renderBandanaFrame(FRAMES[0], { front, "front-mask": mask }, sheet, sheetMm, mock.style);
+        cv.width = PW;
+        cv.height = PH;
+        cv.getContext("2d")?.drawImage(frame, 0, 0);
+        setDogReady(true);
+      })
+      .catch((e) => console.error("BandanaFabric3D dog", e));
+    return () => {
+      dead = true;
+    };
+  }, [sheet, sheetMm, mock.style]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -449,6 +474,14 @@ export default function BandanaFabric3D({
           cap.scale.set(1, 0.35, 1);
           cap.rotation.x = -Math.PI / 2;
           cap.position.set(v.x, v.y, v.z - 0.3);
+          // ปลายขวาด้านหน้า: ฝากระดุมตัวผู้ (หมุดทะลุ 2 ชั้น) ให้เห็นว่าปลายนี้ติดกระดุม (เจ้าของร้านชี้ 23 ต.ค. 69 "ตรงนี้ต้องมีกระดุมเพื่อติดด้วย")
+          const vf = pos(...stAt(W * 0.9, dFold));
+          const capF = add(new THREE.Mesh(g(new THREE.SphereGeometry(sr, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)), snapMat));
+          capF.scale.set(1, 0.35, 1);
+          capF.rotation.x = Math.PI / 2;
+          capF.position.set(vf.x, vf.y, vf.z + 0.3);
+          const rimF = add(new THREE.Mesh(g(new THREE.TorusGeometry(sr, sr * 0.12, 10, 32)), snapMat));
+          rimF.position.set(vf.x, vf.y, vf.z + 0.35);
         } else {
           // 🦮 สายปลอกคอเดิม (ไม่รวมในงาน) สอดอยู่ในช่องพับระหว่างผ้า 2 ชั้น ยื่นพ้นผ้าสองข้าง + หัวเข็มขัดปลายซ้าย
           const sy = yTop - strapW * 0.62;
@@ -502,7 +535,8 @@ export default function BandanaFabric3D({
               c.targetPitch = null;
             } else c.pitch += d * Math.min(1, dt * 7);
           }
-          const dist = BASE_DIST / c.zoom;
+          // กล่องแคบ (มีแผงหมาข้าง ๆ / จอมือถือ) ถอยกล้องให้ผืนกว้างยังอยู่ในกรอบ
+          const dist = (BASE_DIST / c.zoom) * Math.max(1, 1.5 / camera.aspect);
           const cp2 = Math.cos(c.pitch);
           // หมุนรอบแกนคอ (z = −R) ไม่ใช่รอบผิวหน้าผ้า
           camera.position.set(dist * Math.sin(c.yaw) * cp2, dist * Math.sin(c.pitch) + lookY, dist * Math.cos(c.yaw) * cp2);
@@ -550,7 +584,7 @@ export default function BandanaFabric3D({
   const styleTh = BANDANA_STYLE_TH[mock.style];
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-900/55 p-3 backdrop-blur-[2px]" onClick={onClose}>
-      <div className="relative flex w-full max-w-3xl flex-col rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative flex w-full max-w-4xl flex-col rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-5 py-3.5">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-lg shadow-[0_4px_12px_rgba(139,92,246,.35)]">
             🐶
@@ -577,9 +611,10 @@ export default function BandanaFabric3D({
           </button>
         </div>
 
+        <div className="mx-3 flex flex-col gap-2 sm:flex-row">
         <div
           ref={boxRef}
-          className="relative mx-3 h-[min(60vh,500px)] cursor-grab touch-none select-none overflow-hidden rounded-2xl bg-[radial-gradient(ellipse_at_50%_38%,#ffffff_0%,#f1f5f9_55%,#e2e8f0_100%)] ring-1 ring-stone-200/70 active:cursor-grabbing"
+          className="relative h-[min(52vh,480px)] min-w-0 cursor-grab sm:flex-1 touch-none select-none overflow-hidden rounded-2xl bg-[radial-gradient(ellipse_at_50%_38%,#ffffff_0%,#f1f5f9_55%,#e2e8f0_100%)] ring-1 ring-stone-200/70 active:cursor-grabbing"
           onWheel={(e) => setZoom((z) => z * Math.exp(-e.deltaY * 0.0015))}
           onDoubleClick={() => setZoom((z) => (z > 1.05 ? 1 : 2))}
           onPointerDown={(e) => {
@@ -666,6 +701,13 @@ export default function BandanaFabric3D({
               +
             </button>
           </div>
+        </div>
+        <div className="relative h-[220px] shrink-0 overflow-hidden rounded-2xl bg-[radial-gradient(ellipse_at_50%_38%,#ffffff_0%,#f1f5f9_55%,#e2e8f0_100%)] ring-1 ring-stone-200/70 sm:h-[min(52vh,480px)] sm:w-[34%]">
+          <canvas ref={dogRef} className={`h-full w-full object-contain transition-opacity ${dogReady ? "opacity-100" : "opacity-0"}`} />
+          <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-extrabold text-stone-700 shadow-sm ring-1 ring-stone-200">
+            🐶 ตอนใส่จริง · ด้านหน้า
+          </span>
+        </div>
         </div>
 
         <div className="space-y-2.5 px-4 pb-4 pt-3">
