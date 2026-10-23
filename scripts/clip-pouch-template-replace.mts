@@ -5,6 +5,12 @@
  *   npx tsx scripts/clip-pouch-template-replace.mts            # ดูผล + สกินใน $TMPDIR/clip-pouch-replace/
  *   npx tsx scripts/clip-pouch-template-replace.mts --write    # อัป + บันทึก (รันซ้ำได้ ไฟล์เดิมทุกไบต์ = ข้าม)
  *   แล้วรัน scripts/clip-pouch-template-link.mts --write (เส้นตัด = ขอบอาร์ตบอร์ดใหม่)
+ *   --src <โฟลเดอร์>   ใช้ไฟล์ชื่อเดียวกันจากโฟลเดอร์นี้แทน NAS (ไม่มี = ใช้ไฟล์ NAS)
+ *
+ * 🧹 ลบเลเยอร์ "ex" ออกจากไฟล์ที่ลูกค้าโหลด (เจ้าของร้านสั่ง 23 ต.ค. 69 · NAS ไม่แตะ): สำเนา 3 ไฟล์ → Illustrator (osascript jsx)
+ *   layers["ex"].remove() → saveAs pdfCompatible แล้วรันสคริปต์นี้ --src <สำเนา> --write
+ *   ⚠️ เครื่องนี้ไม่มีฟอนต์ TH SarabunPSK — บันทึกจาก Illustrator ตรง ๆ ป้ายไทยในส่วน PDF กลายเป็นกล่อง ☒ (Quick Look/pymupdf)
+ *     → ใน jsx เปลี่ยนป้าย 6 อันเป็น Thonburi ขนาด ×0.72 ก่อนบันทึก (ปลดล็อก/เปิดเลเยอร์ชั่วคราว ไม่งั้น Error 8705)
  *
  * ไฟล์ใหม่: อาร์ตบอร์ด = ขอบผ้าทั้งผืน (แถบเทา = ตะเข็บ) ชื่อตรงค่าตัวเลือกแล้ว (9.5x9 / 11.5x10 / 14.5x10 / 17.5x14.5)
  * ⚠️ 3 ไฟล์ (11.5/14.5/17.5) เลเยอร์ "ex" = ลายตัวอย่างเป็ดลายทาง เปิดค้าง · 9.5x9 เลเยอร์ "template" ปิดอยู่
@@ -13,12 +19,13 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import type { DesignTemplate, TemplateFile } from "../src/lib/design-templates";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
+const SRC = process.argv.includes("--src") ? process.argv[process.argv.indexOf("--src") + 1] : "";
 const DIR = "/Volumes/iDuckyShop/All Template/6. กระเป๋า/11.4 Wallet+Clip pouch";
 const PAIRS = [
   { tpl: "tpl-9y3ijde49", file: "Clip Pouch 9.5x9 cm -.ai", name: "Clip Pouch 9.5x9" },
@@ -74,7 +81,7 @@ for (const p of PAIRS) {
   const files = t.files ?? [];
   if (files.length !== 1) die(`ชุด "${t.name}" มี ${files.length} ไฟล์`);
   const old = files[0];
-  const src = `${DIR}/${p.file}`;
+  const src = SRC && existsSync(`${SRC}/${p.file}`) ? `${SRC}/${p.file}` : `${DIR}/${p.file}`;
   const bytes = readFileSync(src);
   const same = old.fileUrl ? md5(Buffer.from(await (await fetch(old.fileUrl)).arrayBuffer())) === md5(bytes) : false;
   if (same && t.name === p.name) {
@@ -83,7 +90,7 @@ for (const p of PAIRS) {
   }
   const skin = `${OUT}${p.tpl}-skin.png`;
   const r = renderSkin(src, skin);
-  console.log(`   ✎ "${t.name}" → "${p.name}" · ${old.fileName} ${old.widthMm}×${old.heightMm} → ${p.file} ${r.widthMm}×${r.heightMm} มม. · สกิน ${skin}`);
+  console.log(`   ✎ "${t.name}" → "${p.name}"${src.startsWith(DIR) ? "" : " (สำเนาลบ ex)"} · ${old.fileName} ${old.widthMm}×${old.heightMm} → ${p.file} ${r.widthMm}×${r.heightMm} มม. · สกิน ${skin}`);
   if (!WRITE) continue;
   const fileUrl = same ? old.fileUrl! : await upload(bytes, "file", p.name, "ai");
   const skinUrl = await upload(readFileSync(skin), "preview", `${p.name}-skin`, "png");
