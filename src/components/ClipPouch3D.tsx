@@ -374,21 +374,39 @@ export default function ClipPouch3D({
             d.position.set(cx, ySt, side * (thick(cx, ySt) + 0.12));
           }
 
-        // 🔩 คลิปสปริง: แถบเหล็ก 2 เส้นในช่องตัวหนีบ ปลายโผล่สองข้าง ยึดด้วยหมุดย้ำ
-        const steel = m(new THREE.MeshStandardMaterial({ color: 0xd9dde2, metalness: 1, roughness: 0.28, envMapIntensity: 1.3 }));
-        const yc = PH - CH / 2;
-        const SH = Math.min(6, CH * 0.35); // ความสูงแถบสปริง
+        // 🔩 คลิปสปริง = บานพับแกนตั้งที่ปลายสองข้าง (เจ้าของร้านส่งรูปสินค้าจริง 23 ต.ค. 69 "คลิปเป็นแบบภาพตัวอย่างที่ส่งให้"):
+        //   แถบเหล็ก 2 แผ่น (หน้า/หลัง) ในช่องตัวหนีบ โผล่พ้นตะเข็บข้างมาเป็นข้อบานพับทรงกระบอกตั้ง 3 ข้อ (บน-ล่าง = แผ่นหน้า · กลาง = แผ่นหลัง)
+        //   มีร่องคั่นระหว่างข้อ + หมุดแกนโผล่หัว-ท้าย · สูงเกือบเต็มช่องตัวหนีบ ชิดขอบปาก
+        const steel = m(new THREE.MeshStandardMaterial({ color: 0xe4e7eb, metalness: 1, roughness: 0.22, envMapIntensity: 1.5 }));
+        const steelDark = m(new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 1, roughness: 0.35, envMapIntensity: 1.2 }));
+        const KR = Math.max(1.1, Math.min(1.6, CH * 0.075)); // รัศมีข้อบานพับ
+        const KH = Math.min(15, CH * 0.78); // ความสูงบานพับทั้งชุด
+        const KGAP = 0.35; // ร่องคั่นข้อ
+        const seg = (KH - 2 * KGAP) / 3;
+        const yTop = PH - CH * 0.08; // ชิดขอบปากนิด ๆ แบบรูปจริง
+        const yBot = yTop - KH;
+        const LEAF = 2.6; // แผ่นเหล็กโผล่จากผ้าถึงข้อ
         for (const s of [1, -1] as const) {
-          for (const side of [1, -1] as const) {
-            const band = add(new THREE.Mesh(g(new THREE.BoxGeometry(3.6, SH, 0.7)), steel));
-            band.position.set(s * (PW / 2 + 1.2), yc, side * (ZT - 0.4));
+          const bx = s * (PW / 2 + LEAF + KR * 0.6);
+          for (let i = 0; i < 3; i++) {
+            const k0 = yTop - i * (seg + KGAP);
+            const kn = add(new THREE.Mesh(g(new THREE.CylinderGeometry(KR, KR, seg, 28)), steel));
+            kn.position.set(bx, k0 - seg / 2, 0);
+            // แผ่นติดข้อ: ข้อบน/ล่าง = แผ่นหน้า (+z) · ข้อกลาง = แผ่นหลัง (−z) — แผ่นโค้งเข้าหาผ้า
+            const side = i === 1 ? -1 : 1;
+            const leaf = add(new THREE.Mesh(g(new THREE.BoxGeometry(LEAF + KR, seg, 0.55)), steel));
+            leaf.position.set(s * (PW / 2 + (LEAF + KR) / 2 - 0.3), k0 - seg / 2, side * (KR - 0.35));
           }
-          const cap = add(new THREE.Mesh(g(new THREE.CylinderGeometry(SH / 2, SH / 2, 2 * ZT + 0.4, 24)), steel));
-          cap.rotation.x = Math.PI / 2;
-          cap.position.set(s * (PW / 2 + 3), yc, 0);
-          const rivet = add(new THREE.Mesh(g(new THREE.CylinderGeometry(1, 1, 2 * ZT + 1.2, 16)), steel), false);
-          rivet.rotation.x = Math.PI / 2;
-          rivet.position.set(s * (PW / 2 + 3), yc, 0);
+          // แผ่นเหล็กยาวเต็มช่วงบานพับเข้าไปใต้ผ้า (หน้า/หลัง) — เห็นเป็นแถบตรงขอบผ้า
+          for (const side of [1, -1] as const) {
+            const strip = add(new THREE.Mesh(g(new THREE.BoxGeometry(1.6, KH, 0.5)), steelDark));
+            strip.position.set(s * (PW / 2 + 0.5), yTop - KH / 2, side * (Math.min(ZT, KR) - 0.3));
+          }
+          // หมุดแกนโผล่หัว-ท้าย
+          for (const y of [yTop + 0.35, yBot - 0.35]) {
+            const pin = add(new THREE.Mesh(g(new THREE.CylinderGeometry(KR * 0.55, KR * 0.55, 0.7, 16)), steelDark), false);
+            pin.position.set(bx, y, 0);
+          }
         }
 
         const lookY = LIFT + PH / 2;
