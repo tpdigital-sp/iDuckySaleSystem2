@@ -13,8 +13,18 @@
 import { useEffect, useRef, useState } from "react";
 import { POUCH_CLIP_MM, POUCH_FABRIC_TH, POUCH_SEAM_X_MM, POUCH_TOP_MM, POUCH_VIEW_TH, type PouchMock, type PouchView } from "@/lib/pouch-mock";
 
-/** มุมกล้อง (เรเดียน รอบแกนตั้ง) — ด้านหน้าหันไป +z */
-const VIEW_YAW: Record<PouchView, number> = { front: 0, right: Math.PI / 2, left: -Math.PI / 2, back: Math.PI };
+/** มุมกล้อง — yaw รอบแกนตั้ง (ด้านหน้าหันไป +z) · pitch ก้ม/เงย (บวก = มองจากบน · ลบ = มองจากล่าง) */
+const VIEW_CAM: Record<PouchView, { yaw: number; pitch: number }> = {
+  front: { yaw: 0, pitch: 0.14 },
+  right: { yaw: Math.PI / 2, pitch: 0.14 },
+  left: { yaw: -Math.PI / 2, pitch: 0.14 },
+  back: { yaw: Math.PI, pitch: 0.14 },
+  // 👀 ด้านบน/ล่าง (เจ้าของร้านสั่ง 23 ต.ค. 69 "3D สามารถดูด้านล่างได้") — เฉียงหน้านิด ๆ เห็นปากคลิป/ก้นพับต่อจากลายหน้า
+  top: { yaw: 0.35, pitch: 1.05 },
+  bottom: { yaw: 0.35, pitch: -1.05 },
+};
+/** ก้ม/เงยได้สุด (ใกล้ ±90° แต่ไม่ถึง — lookAt เสียทิศเมื่อตรงดิ่ง) */
+const PITCH_MAX = 1.35;
 
 /** ครอปผืน (มม.) เป็นผืนใหม่ · rot180 = หมุนกลับหัว (ด้านหลังในผืนวางกลับหัว) · k = พิกเซล/มม. */
 function crop(src: HTMLCanvasElement, k: number, x: number, y: number, w: number, h: number, rot180 = false): HTMLCanvasElement {
@@ -90,7 +100,7 @@ export default function ClipPouch3D({
   const [view, setView] = useState<PouchView>("front");
   const [zoom, setZoomState] = useState(1);
   const clampZ = (z: number) => Math.max(0.6, Math.min(3, z));
-  const cam = useRef({ yaw: 0.32, pitch: 0.14, zoom: 1, targetYaw: null as number | null, spin: false, dragging: false });
+  const cam = useRef({ yaw: 0.32, pitch: 0.14, zoom: 1, targetYaw: null as number | null, targetPitch: null as number | null, spin: false, dragging: false });
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const pts = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ d: number; z: number } | null>(null);
@@ -102,10 +112,11 @@ export default function ClipPouch3D({
   const goView = (v: PouchView) => {
     setView(v);
     const cur = cam.current.yaw;
-    let t = VIEW_YAW[v];
+    let t = VIEW_CAM[v].yaw;
     while (t - cur > Math.PI) t -= 2 * Math.PI;
     while (t - cur < -Math.PI) t += 2 * Math.PI;
     cam.current.targetYaw = t;
+    cam.current.targetPitch = VIEW_CAM[v].pitch;
     cam.current.spin = false;
     setSpin(false);
   };
@@ -406,11 +417,22 @@ export default function ClipPouch3D({
               c.targetYaw = null;
             } else c.yaw += d * Math.min(1, dt * 7);
           } else if (c.spin && !c.dragging) c.yaw += dt * 0.55;
+          if (c.targetPitch != null) {
+            const d = c.targetPitch - c.pitch;
+            if (Math.abs(d) < 0.004) {
+              c.pitch = c.targetPitch;
+              c.targetPitch = null;
+            } else c.pitch += d * Math.min(1, dt * 7);
+          }
           const dist = BASE_DIST / c.zoom;
           const cp2 = Math.cos(c.pitch);
           camera.position.set(dist * Math.sin(c.yaw) * cp2, dist * Math.sin(c.pitch) + lookY, dist * Math.cos(c.yaw) * cp2);
           camera.lookAt(0, lookY, 0);
           fill.position.copy(camera.position);
+          fill.target.position.set(0, lookY, 0);
+          fill.target.updateMatrixWorld();
+          // มองจากบน = แดดพอแล้ว · ก้มลงต่ำกว่าพื้นยิ่งเติมแรง (ก้นกระเป๋าไม่มืด)
+          fill.intensity = c.pitch < 0 ? 0.45 + Math.min(0.6, -c.pitch * 0.6) : 0.45;
           sun.position.set(camera.position.x, 0, camera.position.z).normalize().multiplyScalar(BASE_DIST * 1.1);
           sun.position.y = BASE_DIST * 0.9;
           sun.position.x += BASE_DIST * 0.25 * Math.cos(c.yaw);
@@ -491,6 +513,7 @@ export default function ClipPouch3D({
             }
             drag.current = { x: e.clientX, y: e.clientY, yaw: cam.current.yaw, pitch: cam.current.pitch };
             cam.current.targetYaw = null;
+            cam.current.targetPitch = null;
             cam.current.dragging = true;
           }}
           onPointerMove={(e) => {
@@ -504,7 +527,8 @@ export default function ClipPouch3D({
             const d = drag.current;
             if (!d) return;
             cam.current.yaw = d.yaw + (e.clientX - d.x) * 0.011;
-            cam.current.pitch = Math.max(-0.15, Math.min(1.2, d.pitch + (e.clientY - d.y) * 0.006));
+            // ↕ ก้มดูด้านล่างได้ (เดิมจำกัด −0.15 · เจ้าของร้านสั่ง 23 ต.ค. 69 "3D สามารถดูด้านล่างได้")
+            cam.current.pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, d.pitch + (e.clientY - d.y) * 0.006));
           }}
           onPointerUp={(e) => {
             pts.current.delete(e.pointerId);
@@ -577,6 +601,20 @@ export default function ClipPouch3D({
                   className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
                 >
                   {v === "front" ? "👁 ด้านหน้า" : POUCH_VIEW_TH[v]}
+                </button>
+              ))}
+            </span>
+            <span className="flex items-center rounded-full bg-stone-100 p-0.5 ring-1 ring-stone-200/70" role="radiogroup" aria-label="มุมบน-ล่าง">
+              {(["top", "bottom"] as PouchView[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={!spin && view === v}
+                  onClick={() => goView(v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
+                >
+                  {v === "top" ? "⬆ ด้านบน" : "⬇ ด้านล่าง"}
                 </button>
               ))}
             </span>

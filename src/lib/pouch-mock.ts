@@ -8,7 +8,7 @@
  * ดู components/ClipPouch3D
  */
 
-export type PouchView = "front" | "right" | "left" | "back";
+export type PouchView = "front" | "right" | "left" | "back" | "top" | "bottom";
 
 export interface PouchMock {
   kind: "pouch";
@@ -26,7 +26,7 @@ export const POUCH_SEAM_X_MM = 12.5;
 export const POUCH_TOP_MM = 27.5;
 export const POUCH_CLIP_MM = 20;
 
-export const POUCH_VIEW_TH: Record<PouchView, string> = { front: "ด้านหน้า", right: "ด้านขวา", left: "ด้านซ้าย", back: "ด้านหลัง" };
+export const POUCH_VIEW_TH: Record<PouchView, string> = { front: "ด้านหน้า", right: "ด้านขวา", left: "ด้านซ้าย", back: "ด้านหลัง", top: "ด้านบน", bottom: "ด้านล่าง" };
 
 export const POUCH_FABRIC_TH: Record<PouchMock["fabric"], string> = { satin: "ผ้าซาติน", duchess: "ผ้าดัชเชส", barbie: "ผ้าบาร์บี้", canvas: "ผ้าแคนวาส" };
 
