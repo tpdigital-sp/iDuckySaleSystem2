@@ -248,7 +248,8 @@ function flakeCanvas(tint: DoorHangerTint): HTMLCanvasElement {
       scatter(200, dot, [0.05, 0.12], W, [0.3, 0.7]);
       break;
     case "dots":
-      scatter(1500, hexFlake, [0.4, 0.65], W, [0.7, 1]);
+      // เลื่อมห่าง ๆ เห็นเป็นเม็ด (เจ้าของร้านทัก 23 ต.ค. 69 "มันดูเยอะเกินไป" — เดิม 1,500 เม็ด/แผ่นปู)
+      scatter(260, hexFlake, [0.5, 0.8], W, [0.75, 1]);
       break;
     case "snow":
       scatter(4, snow, [6, 10], W);
@@ -261,11 +262,11 @@ function flakeCanvas(tint: DoorHangerTint): HTMLCanvasElement {
       scatter(500, dot, [0.05, 0.1], W, [0.3, 0.8]);
       break;
     case "stardust":
-      scatter(5200, hexFlake, [0.1, 0.2], W, [0.5, 1]);
+      scatter(2800, hexFlake, [0.1, 0.2], W, [0.5, 1]);
       scatter(10, star, [0.9, 1.5], W);
       break;
     case "dust":
-      scatter(6000, hexFlake, [0.07, 0.14], W, [0.5, 1]);
+      scatter(3600, hexFlake, [0.07, 0.14], W, [0.5, 1]);
       break;
     case "hearts":
       scatter(4, heart, [7, 11], W);
@@ -519,7 +520,7 @@ export default function DoorHanger3D({
           sheenTex.rotation = Math.PI / 5; // แถบสีเอียงทแยงแบบแผ่นโฮโลแกรมจริง
           mats.push(sheenTex);
           // ฟิล์ม: hologram-01/รุ้ง = ทั้งแผ่นเหลือบชัด (ภาพตัวอย่าง) · ลายอนุภาค = แค่เหลือบจาง ๆ
-          filmBase = tint.pattern === "rainbow" ? 0.55 : tint.pattern === "film" ? 0.42 : 0.1;
+          filmBase = tint.pattern === "rainbow" ? 0.55 : tint.pattern === "film" ? 0.42 : 0.06;
           filmMat = m(new THREE.MeshBasicMaterial({ map: sheenTex, transparent: true, opacity: filmBase, depthWrite: false, side: THREE.DoubleSide }));
           const film = new THREE.Mesh(g(new THREE.ShapeGeometry(shape, 32)), filmMat);
           film.position.z = -T * 0.15;
