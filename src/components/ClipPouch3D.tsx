@@ -312,6 +312,7 @@ export default function ClipPouch3D({
           mats.push(t);
           const mm = (mat as InstanceType<typeof THREE.MeshPhysicalMaterial>).clone();
           mm.map = t;
+          mm.emissiveMap = t;
           mm.side = THREE.DoubleSide;
           mm.vertexColors = false;
           mats.push(mm);
@@ -333,6 +334,13 @@ export default function ClipPouch3D({
           weave.repeat.set(PW / 2.2, PH / 2.2);
           mats.push(weave);
         }
+        /**
+         * 🎨 สีผ้าตรงลายที่ออกแบบ (เจ้าของร้านทัก 23 ต.ค. 69 "อยากให้ภาพสีเหมือนกัน 3D สีเข้มไป"):
+         *   สีลายเรืองเอง SELF (ไม่ขึ้นกับแสง) + รับแสงอีก LIT × แสงรวม (~0.7 ด้านหน้า วัดจากจอ) → ด้านหันหากล้อง ≈ 1.0 × สีลาย
+         *   ไม่ผ่าน tone mapping (ไม่บีบสี) · ด้านเฉียง/เงาขอบมืดลงได้สุด ~40% ยังเห็นทรงพอง
+         */
+        const SELF = 0.72;
+        const LIT = 0.4;
         const fabricMat = (cv: HTMLCanvasElement) => {
           const t = new THREE.CanvasTexture(cv);
           t.colorSpace = THREE.SRGBColorSpace;
@@ -341,11 +349,16 @@ export default function ClipPouch3D({
           return m(
             new THREE.MeshPhysicalMaterial({
               map: t,
+              color: new THREE.Color(LIT, LIT, LIT),
+              emissiveMap: t,
+              emissive: new THREE.Color(0xffffff),
+              emissiveIntensity: SELF,
+              toneMapped: false,
               metalness: 0,
               roughness: fabricOpts.roughness,
               sheen: fabricOpts.sheen,
               sheenRoughness: fabricOpts.sheenRoughness,
-              sheenColor: new THREE.Color(0x9a9a9a),
+              sheenColor: new THREE.Color(0x5a5a5a),
               envMapIntensity: 0.5,
               vertexColors: true,
               ...(weave ? { bumpMap: weave, bumpScale: 0.6 } : {}),
@@ -381,7 +394,8 @@ export default function ClipPouch3D({
         // ตะเข็บข้าง (เย็บกลับด้านใน เห็นเป็นขอบผ้าบาง ๆ) — สีเฉลี่ยของขอบลาย
         for (const s of [1, -1] as const) {
           const col = avgColor(sheet, k, s === 1 ? W - SX - 2 : SX, TOP, 2, PH);
-          const sideMat = m(new THREE.MeshPhysicalMaterial({ color: col, roughness: fabricOpts.roughness, sheen: fabricOpts.sheen, sheenRoughness: fabricOpts.sheenRoughness }));
+          const sc = new THREE.Color(col);
+          const sideMat = m(new THREE.MeshPhysicalMaterial({ color: sc.clone().multiplyScalar(LIT), emissive: sc.clone().multiplyScalar(SELF), toneMapped: false, roughness: fabricOpts.roughness, sheen: fabricOpts.sheen, sheenRoughness: fabricOpts.sheenRoughness }));
           const NY = 60;
           const pos: number[] = [];
           const idx: number[] = [];
