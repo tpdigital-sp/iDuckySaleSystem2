@@ -12,8 +12,10 @@
  *    ห้ามเปลี่ยนชื่อกลุ่ม/ชื่อตัวเลือกเด็ดขาด — cells ผูกกับ "70x70cm" / "100x100cm" / "140x140cm"
  *    สคริปต์นี้จึงเติมแค่ display/note/imageSrc/desc ([[iducky-price-driver-trap]])
  *
- * ภาพขนาด 3 ใบ วาด "สเกลเดียวกัน" (2.4 px = 1 ซม.) มีคนสูง 165 ซม. ยืนเทียบทุกใบ
- *   ผืนวางแบนขอบบนตรงกันทุกใบ (ใบใหญ่จึงยาวลงล่างจริง) + คนสวมผ้าผืนนั้นตามการใช้งานจริง
+ * ภาพขนาด 3 ใบ วาด "สเกลเดียวกัน" (3 px = 1 ซม.) มีคนสูง 165 ซม. ยืนเทียบทุกใบ
+ *   คน = การ์ตูนผู้หญิง 3D ใส่ผ้าคลุมไหล่ ตัดจากภาพตัวอย่างที่เจ้าของร้านส่งมา (ลบพื้นด้วย BiRefNet)
+ *   แคช .cache/shawl/girl/girl.png · สำรองบน storage product-images/products/shawl/girl-165cm.png
+ *   เท้าคนกับขอบล่างผืนอยู่บนพื้นเดียวกัน (FLOOR_Y)
  * ภาพเนื้อผ้า 2 ใบ ใช้ "ภาพถ่ายผ้าตัวอย่างจริง" จากใบเทียบเนื้อผ้าในไดรฟ์ ครอปเฉพาะเนื้อผ้า
  *   /Volumes/iDuckyShop/- ข้อมูลตอบลูกค้า/40_เสื้อผ้าและงานผ้า/งานผ้าต่างๆ/เนื้อผ้าต่างๆ/{6.Satin Peach,7.Satin Silk}.jpg
  *   (พิมพ์ลายเดียวกันทั้งสองเนื้อ เทียบกันได้ตรง ๆ — ใบนี้เขียนเองว่า "เหมาะสำหรับการทำผ้าคลุมไหล่")
@@ -27,8 +29,9 @@ import sharp from "sharp";
 import { mascotDataUri } from "./iducky-assets.mjs";
 
 const PRODUCT_ID = "shawl";
-const VER = "v3";   // v3 = คนยืนข้างผืนผ้าแขวนตั้งบนพื้นเดียวกัน สเกล 3 px/ซม. · ไม่มีป้ายบังผืน (v2 ป้ายตัวเลขบังครึ่งล่าง ผืนดูไม่จัตุรัส · ผ้าบนตัวคนดูเป็นเสื้อกั๊ก — เจ้าของร้านสั่งเปลี่ยนภาพ 23 ต.ค. 69)
-// const VER = "v2";   // v2 = แก้ผ้าบนตัวคน: 70 = ผ้าพันคอผูกปม · 100/140 = พาดบ่าชายห้อย 2 ข้าง เปิดกลางลำตัว (v1 วาดปิดหน้าอกทั้งผืน ดูเป็นผ้าให้นม)
+const VER = "v5";   // v5 = กล่องตัวเลขกว้างพอ (v4 "100 × 100" ชนขอบกล่อง) · v4 = คนเทียบขนาดเป็นการ์ตูนผู้หญิง 3D ใส่ผ้าคลุมไหล่ (เจ้าของร้านส่งภาพตัวอย่าง 23 ต.ค. 69 "ต้องเป็นภาพแบบนี้") · เท้าแตะพื้นเดียวกับขอบล่างผืน
+// v3 = คนยืนเปล่า + ผืนตั้ง (ไม่ผ่าน — เจ้าของร้านส่งภาพตัวอย่างแบบ v2 ที่เปลี่ยนคนเป็นการ์ตูน 3D)
+// v2 = แก้ผ้าบนตัวคน: 70 = ผ้าพันคอผูกปม · 100/140 = พาดบ่าชายห้อย 2 ข้าง เปิดกลางลำตัว (v1 วาดปิดหน้าอกทั้งผืน ดูเป็นผ้าให้นม)
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || `.cache/${PRODUCT_ID}/upload`).replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
@@ -50,7 +53,7 @@ const title = (t, sub) => `
 
 const foot = (lines) =>
   lines.filter(Boolean)
-    .map((t, i, a) => `<text x="${W / 2}" y="${H - 40 - (a.length - 1 - i) * 32}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">${t}</text>`)
+    .map((t, i, a) => `<text x="${W / 2}" y="${H - 36 - (a.length - 1 - i) * 28}" font-family="${TH}" font-size="19" text-anchor="middle" fill="${SUB}">${t}</text>`)
     .join("");
 
 const pill = (cx, y, text, tone = "ok") => {
@@ -67,7 +70,7 @@ const dim = (x1, y1, x2, y2, label, side = "below") => {
   const vertical = x1 === x2;
   const right = vertical && side === "right";   // ป้ายอยู่ขวาเส้น (กันทับป้ายตัวเลขกลางผืน)
   const lx = vertical ? x1 + (right ? 14 : -14) : (x1 + x2) / 2;
-  const ly = vertical ? (y1 + y2) / 2 + 8 : y2 + (side === "below" ? 32 : -14);   // "above" = ป้ายเหนือเส้น · แนวตั้งไม่ใช่ "right" = ป้ายซ้ายเส้น
+  const ly = vertical ? (y1 + y2) / 2 + 8 : y2 + (side === "below" ? 32 : -14);
   const tick = (x, y) => `<line x1="${x - (vertical ? 9 : 0)}" y1="${y - (vertical ? 0 : 9)}" x2="${x + (vertical ? 9 : 0)}" y2="${y + (vertical ? 0 : 9)}" stroke="${SUB}" stroke-width="3"/>`;
   return `
     <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${SUB}" stroke-width="2.5"/>
@@ -82,10 +85,10 @@ const dim = (x1, y1, x2, y2, label, side = "below") => {
 // 1) กลุ่ม "ขนาด" — การ์ด 3 ใบ สเกลเดียวกัน + คนสูง 165 ซม. ยืนเทียบ
 // ════════════════════════════════════════════════════════════════════
 const S = 3;            // px ต่อ 1 ซม. — ใช้ร่วมกันทั้ง 3 ใบ ห้ามแยกสเกล ไม่งั้นเทียบขนาดไม่ได้
-const FLOOR_Y = 690;    // พื้น — เท้าคนกับชายผืนล่างตรงกันทุกใบ
-const MAN_CX = 165;     // กลางตัวคนเทียบขนาด
+const FLOOR_Y = 670;    // พื้น — เท้าคนกับขอบล่างผืนตรงกันทุกใบ
+const SQ_CX = 505;      // กลางผืน (ให้กลางผืนตกในกรอบครอป 300-600)
+const MAN_CX = 168;     // กลางตัวคนเทียบขนาด
 const MAN_CM = 165;     // ส่วนสูงคนอ้างอิง
-const SQ_LEFT = 300;    // ขอบซ้ายผืนผ้า (ผืนใหญ่ขยายไปทางขวา)
 
 const CLOTH_DEFS = `
   <linearGradient id="cloth" x1="0" y1="0" x2="1" y2="1">
@@ -103,45 +106,59 @@ const CLOTH_DEFS = `
     <circle cx="34" cy="8" r="2.2" fill="#f7b6cd"/>
   </pattern>`;
 
-/** คนยืนเทียบขนาด — วาดในหน่วย "ซม." แล้ว scale ด้วย S · เท้าแตะพื้น FLOOR_Y (สูง 165 ซม. เท่ากันทุกใบ) */
+/** การ์ตูนผู้หญิง 3D (PNG พื้นใส) — แคชในเครื่อง ไม่มีก็ดึงจาก storage */
+const GIRL_CACHE = `.cache/${PRODUCT_ID}/girl/girl.png`;
+const GIRL_URL = "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/shawl/girl-165cm.png";
+if (!existsSync(GIRL_CACHE)) {
+  const res = await fetch(GIRL_URL);
+  if (!res.ok) throw new Error(`ดึงภาพการ์ตูนผู้หญิงไม่ได้ (${res.status}) — ${GIRL_URL}`);
+  mkdirSync(`.cache/${PRODUCT_ID}/girl`, { recursive: true });
+  writeFileSync(GIRL_CACHE, Buffer.from(await res.arrayBuffer()));
+}
+const girlBuf = await sharp(GIRL_CACHE).trim({ threshold: 1 }).toBuffer({ resolveWithObject: true });
+const GIRL = { uri: `data:image/png;base64,${girlBuf.data.toString("base64")}`, ratio: girlBuf.info.width / girlBuf.info.height };
+
+/** คนสูง 165 ซม. ยืนบนพื้น FLOOR_Y — สูงเท่ากันทุกใบ */
 const person = (cx) => {
-  const top = FLOOR_Y - MAN_CM * S;
+  const h = MAN_CM * S, w = h * GIRL.ratio, top = FLOOR_Y - h;
+  const lx = cx - w / 2 - 16;
   return `
-  <g transform="translate(${cx} ${top}) scale(${S})">
-    <g fill="#cbd5e1">
-      <rect x="-16" y="84" width="13" height="81" rx="5"/><rect x="3" y="84" width="13" height="81" rx="5"/>
-      <rect x="-25.5" y="28" width="6" height="54" rx="3"/><rect x="19.5" y="28" width="6" height="54" rx="3"/>
-      <path d="M -20 26 q 20 -5 40 0 l -3 58 l -34 0 z"/>
-      <rect x="-3.5" y="18" width="7" height="10" rx="3"/>
-    </g>
-    <ellipse cx="0" cy="11" rx="9" ry="11.5" fill="#e2e8f0"/>
-    <path d="M -9.6 9 q 2 -13 9.6 -13 q 7.6 0 9.6 13 q -4 -6 -9.6 -6 q -5.6 0 -9.6 6 z" fill="#b9c4d2"/>
-  </g>
-  ${dim(cx - 52, top, cx - 52, FLOOR_Y, "165", "left")}
-  <text x="${cx}" y="${FLOOR_Y + 34}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">คนสูง 165 ซม.</text>`;
+  <ellipse cx="${cx}" cy="${FLOOR_Y - 2}" rx="${w * 0.36}" ry="7" fill="#0f172a" opacity="0.07"/>
+  <image href="${GIRL.uri}" x="${cx - w / 2}" y="${top}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>
+  <!-- เส้นบอกส่วนสูงคน -->
+  <line x1="${lx}" y1="${top}" x2="${lx}" y2="${FLOOR_Y}" stroke="${SUB}" stroke-width="2" stroke-dasharray="7 6"/>
+  <line x1="${lx - 8}" y1="${top}" x2="${lx + 8}" y2="${top}" stroke="${SUB}" stroke-width="2.5"/>
+  <line x1="${lx - 8}" y1="${FLOOR_Y}" x2="${lx + 8}" y2="${FLOOR_Y}" stroke="${SUB}" stroke-width="2.5"/>
+  <text x="${cx}" y="${FLOOR_Y + 34}" font-family="${TH}" font-size="23" font-weight="700" text-anchor="middle" fill="${SUB}">คนสูง 165 ซม.</text>
+  <text x="${cx}" y="${FLOOR_Y + 60}" font-family="${TH}" font-size="19" text-anchor="middle" fill="#94a3b8">(ไว้เทียบขนาด)</text>`;
 };
 
 const MASCOT = await mascotDataUri("heart", 300);
 
-/** การ์ดขนาด 1 ใบ — คนยืน + ผืนผ้าแขวนตั้งข้างกัน บนพื้นเดียวกัน สเกลจริง */
+/** การ์ดขนาด 1 ใบ — ผืนวางแบน (สเกลจริง) + คนสวมผ้าผืนนั้น + ป้ายตัวเลขกลางภาพ */
 function sizeArt({ cm, use, prices }) {
   const side = cm * S;
-  const left = SQ_LEFT, right = SQ_LEFT + side;
+  const left = SQ_CX - side / 2, right = SQ_CX + side / 2;
   const bottom = FLOOR_Y, top = FLOOR_Y - side;
-  const cx = left + side / 2;
-  const mw = side * 0.5, mh = mw / MASCOT.ratio;
+  const cy = top + side / 2;
+  const fs = cm <= 70 ? 44 : 58;
+  const bw = Math.max(fs * 5.7, 196), bh = fs + 62;
+  const labelCY = bottom - 18;                 // ป้ายคาบขอบล่างผืน — กลางป้ายยังอยู่ในกรอบครอป 300-600
+  const mw = side * 0.44, mh = mw / MASCOT.ratio;
   return frame(`
     ${title(`ขนาด ${cm} × ${cm} ซม.`, `ผืนละ ฿${prices[0]} (1-10 ผืน) · สั่ง 5,000 ผืนขึ้นไป ฿${prices[1]}`)}
-    <!-- พื้น -->
-    <rect x="60" y="${FLOOR_Y}" width="${W - 120}" height="3" rx="1.5" fill="#e2e8f0"/>
     ${person(MAN_CX)}
-    <!-- ผืนผ้าตั้งขึ้น ขนาดจริงตามสเกล 1 ซม. = ${S} px -->
-    <rect x="${left + 6}" y="${top + 8}" width="${side}" height="${side - 8}" rx="8" fill="#0f172a" opacity="0.07"/>
-    <rect x="${left}" y="${top}" width="${side}" height="${side}" rx="8" fill="url(#print)" stroke="#dbe3ec" stroke-width="2"/>
-    <image href="${MASCOT.uri}" x="${cx - mw / 2}" y="${top + (side - mh) / 2}" width="${mw}" height="${mh}" preserveAspectRatio="xMidYMid meet"/>
-    ${dim(left, top - 22, right, top - 22, `${cm} ซม.`, "above")}
-    ${dim(right + 30, top, right + 30, bottom, `${cm} ซม.`, "right")}
-    ${pill(W / 2, 770, use, "pink")}
+    <!-- ผืนผ้าวางแบน ขนาดจริงตามสเกล 1 ซม. = ${S} px -->
+    <rect x="${left + 5}" y="${top + 7}" width="${side}" height="${side}" rx="10" fill="#0f172a" opacity="0.07"/>
+    <rect x="${left}" y="${top}" width="${side}" height="${side}" rx="10" fill="url(#print)" stroke="#dbe3ec" stroke-width="2"/>
+    <image href="${MASCOT.uri}" x="${SQ_CX - mw / 2}" y="${top + side * 0.05}" width="${mw}" height="${mh}" preserveAspectRatio="xMidYMid meet"/>
+    ${dim(left, bottom + 46, right, bottom + 46, `${cm} ซม.`, "below")}
+    ${dim(right + 42, top, right + 42, bottom, `${cm} ซม.`, "right")}
+    <!-- ป้ายตัวเลขกลางผืน — ต้องอ่านออกตอนย่อเป็นปุ่ม/การ์ด ([[iducky-option-thumb-crop]]) -->
+    <rect x="${SQ_CX - bw / 2}" y="${labelCY - bh / 2}" width="${bw}" height="${bh}" rx="20" fill="#ffffff" opacity="0.94" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="${SQ_CX}" y="${labelCY + 4}" font-family="${TH}" font-size="${fs}" font-weight="700" text-anchor="middle" fill="${INK}">${cm} × ${cm}</text>
+    <text x="${SQ_CX}" y="${labelCY + 38}" font-family="${TH}" font-size="25" font-weight="700" text-anchor="middle" fill="${SUB}">เซนติเมตร</text>
+    ${pill(W / 2, 792, use, "pink")}
     ${foot([
       "ภาพทั้ง 3 ขนาดวาดสเกลเดียวกัน · คนในภาพสูง 165 ซม. เท่ากันทุกใบ",
       "ขนาดจริงอาจคลาดเคลื่อน 2-5 ซม. เพราะผ้าแต่ละผืนตัดมาไม่เท่ากันเป๊ะ",
