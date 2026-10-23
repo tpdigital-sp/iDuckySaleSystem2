@@ -42,7 +42,7 @@ import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { rememberOrderLink } from "@/lib/my-order-links";
 import { lockedTier, paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
-import { parseReuseArt, reuseArtText, type AddOnLine, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import { parseReuseArt, reuseArtText, selfDesignedProofs, type AddOnLine, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, shipCalcLines, shipRetailOnly, type AppendTarget } from "@/lib/append-order";
 import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
@@ -72,8 +72,7 @@ interface Placed {
 
 
 /**
- * ลูกค้าออกแบบเองบนเทมเพลต → แปลงภาพที่ประกอบแล้วเป็น "แบบที่อนุมัติแล้ว" ให้เลย
- * เงื่อนไข: มีบรรทัดพิกัดของทีมผลิต (มาจากจอวางลาย) และจำนวนรูปตรงกับจำนวนลาย
+ * ลูกค้าออกแบบเองบนเทมเพลต → แปลงภาพที่ประกอบแล้วเป็น "แบบที่อนุมัติแล้ว" ให้เลย (กติกาอยู่ที่ selfDesignedProofs · รองรับงานหลายหน้า)
  * ไม่เข้าเงื่อนไข = คืนอ็อบเจกต์ว่าง (ออเดอร์เดินขั้นตอนเดิม: กราฟฟิกทำแบบ → ลูกค้าตรวจ)
  */
 function selfDesignedProof(
@@ -81,22 +80,8 @@ function selfDesignedProof(
   artworkUrls: string[],
   at: string,
 ): { proofs?: Proof[]; proofStatus?: "อนุมัติ"; proofUpdatedAt?: string } {
-  const specs = (sel[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
-  if (!specs.length || specs.length !== artworkUrls.length) return {};
-  const proofs: Proof[] = artworkUrls.map((url, i) => {
-    // จำนวน "ชิ้น" ของลายนี้ — ขายเป็นแผ่น/เซ็ต: "× 30 แผ่น A3 (120 ชิ้น)" ใช้เลขในวงเล็บ (เดิมได้ 30 = นับแผ่นเป็นชิ้น · OD-261019-1860)
-    //   ขายเป็นชิ้น: "× 30 ชิ้น" เหมือนเดิม
-    const head = /^ลายที่ \d+ × [^—]*/.exec(specs[i] ?? "")?.[0] ?? "";
-    const qty = Number(/\((\d+) [^)]*\)/.exec(head)?.[1] ?? specs[i]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
-    return {
-      url,
-      at,
-      review: "อนุมัติ" as const,
-      note: `ลายที่ ${i + 1} — ลูกค้าจัดวางเองบนเทมเพลต (อนุมัติอัตโนมัติ)`,
-      ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}),
-    };
-  });
-  return { proofs, proofStatus: "อนุมัติ", proofUpdatedAt: at };
+  const proofs = selfDesignedProofs(sel, artworkUrls, at);
+  return proofs ? { proofs, proofStatus: "อนุมัติ", proofUpdatedAt: at } : {};
 }
 
 export default function CheckoutPage() {
@@ -207,7 +192,7 @@ export default function CheckoutPage() {
   /* โหมดสั่งเพิ่มในออเดอร์เดิม (มาจากหน้าเช็คออเดอร์) */
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
   /** ship = ใส่ค่าส่งให้ใบที่ยังไม่มีวิธีส่ง (ชื่อวิธี + ราคา) — ไม่มี = รวมส่งกับกล่องเดิม */
-  const [appendDone, setAppendDone] = useState<{ owed: number; ship?: { name: string; cost: number } } | null>(null);
+  const [appendDone, setAppendDone] = useState<{ owed: number; ship?: { name: string; cost: number }; priceHold?: number } | null>(null);
   useEffect(() => setAppendTo(getAppendTarget()), []);
   /**
    * 🚚 สั่งเพิ่มเข้าใบที่ยังไม่มีวิธีส่ง → วิธีส่ง/ส่งฟรีคิดจาก "ทั้งใบ" (ของเดิม + ที่หยิบรอบนี้) ชุดเดียวกับหน้าตะกร้า
@@ -709,7 +694,11 @@ export default function CheckoutPage() {
         router.replace(`/admin/orders/${encodeURIComponent(appendTo.id)}`);
         return;
       }
-      setAppendDone({ owed: res.owed ?? 0, ...(appendNeedsShip ? { ship: { name: effectiveMethod.name, cost: shippingCost } } : {}) });
+      setAppendDone({
+        owed: res.owed ?? 0,
+        ...(appendNeedsShip ? { ship: { name: effectiveMethod.name, cost: shippingCost } } : {}),
+        ...(res.priceHold ? { priceHold: res.priceHold } : {}),
+      });
       window.scrollTo({ top: 0 }); // หน้าสั่งเพิ่มสำเร็จ — เริ่มที่หัวหน้าเหมือนสั่งใบใหม่
       // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
       items.forEach((it) => removeItem(it.key));
@@ -859,7 +848,15 @@ export default function CheckoutPage() {
             </Link>{" "}
             เรียบร้อย
           </p>
-          {appendDone.owed > 0 && (
+          {/* ⏸ มีรายการที่ร้านต้องตรวจราคาก่อน (สินค้าที่ร้านเคยตีราคาเองในใบนี้ แต่สเปคไม่ตรง) — ยังไม่ต้องโอน */}
+          {!!appendDone.priceHold && (
+            <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+              ⏳ มี {appendDone.priceHold.toLocaleString("th-TH")} รายการที่ทางร้านต้องตรวจราคาก่อน — <u>ยังไม่ต้องโอนตอนนี้</u>
+              <br />
+              <span className="text-xs font-normal">ร้านตรวจเสร็จแล้ว ยอดที่ถูกต้องจะขึ้นในหน้าออเดอร์ให้แจ้งโอนได้เลย</span>
+            </p>
+          )}
+          {appendDone.owed > 0 && !appendDone.priceHold && (
             <p className="mt-3 rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-amber-200">
               ยอดที่ต้องโอนเพิ่ม <span className="text-lg font-extrabold text-amber-600">{formatPrice(appendDone.owed)}</span>
               <br />

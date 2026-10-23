@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { isFreeOrder, orderTotal, priceCheckPending, resetProofStageForNewWork, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
-import { dealerRateOf } from "@/lib/products";
+import { dealerRateOf, type Product } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
-import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
+import { carryAdminSurcharge, lotRepriceNote, repriceOrderLot, surchargeNote } from "@/lib/order-lot-reprice";
 import { giftSyncNote, syncOrderGifts } from "@/lib/server/order-gifts";
 import { shippingUnset } from "@/lib/ship-label";
 import { requirePerm } from "@/lib/server/require-perm";
@@ -153,7 +153,18 @@ export async function POST(req: Request) {
   // บรรทัดที่กำลังถูกแทนไม่ร่วมคิด และไม่ถูกแตะราคา (หน้าออเดอร์จับคู่ถอดด้วยราคาเดิม — ราคาเปลี่ยน = ถอดไม่ได้)
   const lotMerged = [...lotBase, ...merged.slice(order.items.length)];
   const lotAdded = lotMerged.map((_, i) => i).filter((i) => i >= lotBase.length);
-  const lotRes = await repriceOrderLot({ ...order, items: lotMerged }, getProductServer, lotAdded);
+  const lotRes0 = await repriceOrderLot({ ...order, items: lotMerged }, getProductServer, lotAdded);
+  /**
+   * ✋➕ สินค้าที่แอดมินเคยแก้ราคาเองในใบนี้ (งานดีเทล) → สเปคตรง = บวกค่าดีเทลให้เอง · ไม่ตรง = พักไว้ให้พนักงานตรวจราคาก่อนโอน
+   * (เจ้าของร้านสั่ง 23 ต.ค. 69 · OD-261015-7299) · ใบเคลม/ส่งฟรีของเข้าใบเป็น ฿0 อยู่แล้ว ไม่ต้องคิด · ดู carryAdminSurcharge
+   */
+  const surcharge = await (async () => {
+    if (free) return { items: lotRes0.order.items, carried: [], held: [] } as ReturnType<typeof carryAdminSurcharge>;
+    const prods = new Map<string, Product | undefined>();
+    for (const pid of new Set(lotRes0.order.items.map((x) => x.productId))) prods.set(pid, await getProductServer(pid));
+    return carryAdminSurcharge(lotBase, lotRes0.order.items, (id) => prods.get(id));
+  })();
+  const lotRes = surcharge.carried.length || surcharge.held.length ? { ...lotRes0, order: { ...lotRes0.order, items: surcharge.items } } : lotRes0;
   const lot =
     skipIdx >= 0
       ? {
@@ -249,6 +260,15 @@ export async function POST(req: Request) {
   // 🧮 บอกให้ชัดว่าของเดิมถูกลดลงมาเท่ากับของใหม่เพราะยอดรวมเข้าเรทส่ง (ลูกค้า/แอดมินเห็นใน log ใบนี้)
   if (lot.changed.length)
     logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
+  if (surcharge.carried.length)
+    logged = withLog(logged, "ระบบ", "✋ บวกค่างานดีเทลตามราคาที่ร้านแก้ไว้", surchargeNote(surcharge.carried));
+  if (surcharge.held.length)
+    logged = withLog(
+      logged,
+      "ระบบ",
+      "⏸ พักรายการไว้ให้ร้านตรวจราคาก่อนโอน",
+      surcharge.held.map((h) => `${h.name} — ${h.why}`).join(" · ")
+    );
   if (gift.changed.length) logged = withLog(logged, "ระบบ", "ปรับของแถมตามยอดรวมทั้งใบ", giftSyncNote(gift.changed));
   if (proofReset) logged = withLog(logged, "ระบบ", "รายการใหม่ยังไม่มีแบบ — กลับไปรอทำแบบ", proofReset.note);
 
@@ -260,7 +280,14 @@ export async function POST(req: Request) {
     const nowIso = new Date().toISOString();
     const prevCheck = priceCheckPending(order) ? order.priceCheck : undefined;
     const what = skipIdx >= 0 ? "แก้ตัวเลือกจากหน้าร้าน" : "สั่งเพิ่มในออเดอร์เดิม";
-    const note = [prevCheck?.note, lot.changed.length ? lotRepriceNote(lot.changed) : ""].filter(Boolean).join(" · ");
+    const note = [
+      prevCheck?.note,
+      lot.changed.length ? lotRepriceNote(lot.changed) : "",
+      surcharge.carried.length ? `บวกค่าดีเทล: ${surchargeNote(surcharge.carried)}` : "",
+      surcharge.held.length ? `⏸ รอตรวจราคาก่อนโอน ${surcharge.held.length} รายการ (สเปคไม่ตรงกับรายการที่ร้านแก้ราคาไว้)` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     logged = {
       ...logged,
       priceCheck: {
@@ -276,5 +303,11 @@ export async function POST(req: Request) {
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
   const safe = customerSafeOrder(saved);
-  return NextResponse.json({ ok: true, order: safe, owed: Math.max(0, owed) });
+  return NextResponse.json({
+    ok: true,
+    order: safe,
+    owed: Math.max(0, owed),
+    // ⏸ มีรายการพักรอร้านตรวจราคา — หน้าชำระเงินต้องบอกว่ายังไม่ต้องโอน
+    ...(surcharge.held.length ? { priceHold: surcharge.held.length } : {}),
+  });
 }

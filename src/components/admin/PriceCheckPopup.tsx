@@ -14,7 +14,7 @@ import { thaiDateTime } from "@/lib/bangkok-time";
 import { tableUnitPrices } from "@/lib/order-lot-reprice";
 import { formatPrice, type Product } from "@/lib/products";
 
-type CheckResult = { priceCheck: Order["priceCheck"] | null; savedAt?: string; log?: Order["log"] };
+type CheckResult = { priceCheck: Order["priceCheck"] | null; savedAt?: string; log?: Order["log"]; items?: Order["items"] };
 
 /** บรรทัดที่เข้าใบในรอบนี้ — addedAt ตั้งแต่ priceCheck.at (เผื่อเวลาเครื่อง/ประตูเขียนประทับต่างกันเล็กน้อย 1 นาที) */
 function isNewLine(addedAt: string | undefined, since: string): boolean {

@@ -92,7 +92,7 @@ export async function appendToOrder(
   ship?: { shipping: string; shippingCost: number; shippingAuto?: boolean },
   /** 📐🎨 ขนาด/ลายของแถมที่เลือกในตะกร้า — ของแถมที่เพิ่งได้ในรอบสั่งเพิ่มนี้ใช้ตามนี้ (ไม่ส่ง = ขนาดแรกของโปร) */
   gift?: Pick<CreateOrderInput, "giftSizes" | "giftArtwork">
-): Promise<{ ok: boolean; owed?: number; error?: string }> {
+): Promise<{ ok: boolean; owed?: number; priceHold?: number; error?: string }> {
   try {
     /**
      * 🛠 มาจากปุ่ม "แก้ตัวเลือก (หน้าร้าน)" = ของใหม่จะ "แทน" รายการเดิม (หน้าออเดอร์ถอดบรรทัดเดิมทีหลัง)
@@ -114,7 +114,7 @@ export async function appendToOrder(
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok && replacing) markReplaceSent("order", orderId, false);
-    return res.ok ? { ok: true, owed: data.owed } : { ok: false, error: data.error ?? "สั่งเพิ่มไม่สำเร็จ" };
+    return res.ok ? { ok: true, owed: data.owed, ...(data.priceHold ? { priceHold: Number(data.priceHold) } : {}) } : { ok: false, error: data.error ?? "สั่งเพิ่มไม่สำเร็จ" };
   } catch {
     markReplaceSent("order", orderId, false);
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };

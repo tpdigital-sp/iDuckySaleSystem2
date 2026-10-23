@@ -3,6 +3,7 @@ import type { OrderGift } from "./gifts";
 import { isPickupOrder, shipFollowsItems } from "./ship-label";
 import type { ClaimFault } from "./claims";
 import { PLACEMENT_SPEC_LABEL } from "./design-templates";
+import { specPageNames } from "./print-sides";
 
 export type OrderStatus =
   | "รอชำระเงิน"
@@ -870,6 +871,11 @@ export interface OrderItem {
    * (OD-261015-7299 · 23 ต.ค. 69: แก้เป็น ฿434 แล้วกด + จำนวน ระบบคิดตารางทับเหลือ ฿279) · ดู adminPriced()
    */
   priceManual?: { by: string; at: string };
+  /**
+   * ⏸ ราคายังไม่นิ่ง — ลูกค้าสั่งเพิ่มสินค้าที่ร้านเคยแก้ราคาเองในใบนี้ แต่สเปคไม่ตรง (carryAdminSurcharge) · ข้อความ = เหตุผล
+   * มีค่า = ลูกค้ายังโอนไม่ได้ (เหมือนรอตีราคา) · ล้างเมื่อแอดมินแก้ราคาบรรทัดนี้ หรือกด "ตรวจราคาแล้ว"
+   */
+  priceHold?: string;
   /** ส่วนลดเฉพาะรายการนี้ (บาท รวมทั้งบรรทัด) — แอดมินใส่เอง หักออกจากยอดรวม */
   discount?: number;
   /** ส่วนลดเฉพาะรายการนี้เป็น % ของราคาบรรทัด (มีค่า = ใช้ % แทนบาท) */
@@ -2537,6 +2543,39 @@ export function selfDesigned(item: Pick<OrderItem, "sel" | "proofs" | "proofUrl"
   return proofs.length > 0 && proofs.every((p) => /ลูกค้าจัดวางเองบนเทมเพลต/.test(p.note ?? ""));
 }
 
+/**
+ * 🎨 ลูกค้าออกแบบเองบนเว็บ → แปลงไฟล์ที่ประกอบแล้วเป็น "แบบที่อนุมัติแล้ว" (ตัวเดียวที่ checkout + หน้าออเดอร์ใช้)
+ * - 1 ลาย = 1 ไฟล์ (จอวางลายบนเทมเพลต) → แบบละลาย พร้อมจำนวนชิ้นจากพิกัด
+ * - 📑 1 ลาย = หลายไฟล์ (จอออกแบบ: ปฏิทิน ปก+เดือน / โปสการ์ด 2 ด้านหลายใบ " · 16 ไฟล์: 1.… 2.…") → แบบทีละหน้า โน้ตบอกชื่อหน้า
+ *   เดิมเช็คแค่ "จำนวนไฟล์ = จำนวนลาย" → งานหลายหน้าไม่เคยได้แบบ ค้าง "รอกราฟฟิกทำแบบ" (OD-261023-1997 · 23 ต.ค. 69)
+ * จับคู่ไม่ลงตัว = null (ปล่อยให้ทีมงานจัดการเอง)
+ */
+export function selfDesignedProofs(sel: Record<string, string> | undefined, artworkUrls: string[], at: string): Proof[] | null {
+  const specs = (sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
+  if (!specs.length || !artworkUrls.length) return null;
+  const note = (what: string) => `${what} — ลูกค้าจัดวางเองบนเทมเพลต (อนุมัติอัตโนมัติ)`;
+  if (specs.length === artworkUrls.length)
+    return artworkUrls.map((url, i) => {
+      // จำนวน "ชิ้น" ของลายนี้ — ขายเป็นแผ่น/เซ็ต: "× 30 แผ่น A3 (120 ชิ้น)" ใช้เลขในวงเล็บ (เดิมได้ 30 = นับแผ่นเป็นชิ้น · OD-261019-1860)
+      //   ขายเป็นชิ้น: "× 30 ชิ้น" เหมือนเดิม
+      const head = /^ลายที่ \d+ × [^—]*/.exec(specs[i] ?? "")?.[0] ?? "";
+      const qty = Number(/\((\d+) [^)]*\)/.exec(head)?.[1] ?? specs[i]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
+      return { url, at, review: "อนุมัติ" as const, note: note(`ลายที่ ${i + 1}`), ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}) };
+    });
+  // สเปคที่ไม่มีรายการหน้า = ลายละ 1 ไฟล์
+  const names = specs.map((sp) => specPageNames(sp) ?? [""]);
+  if (names.reduce((a, l) => a + l.length, 0) !== artworkUrls.length) return null;
+  let k = 0;
+  return names.flatMap((list, d) =>
+    list.map((nm, j) => ({
+      url: artworkUrls[k++],
+      at,
+      review: "อนุมัติ" as const,
+      note: note(`${specs.length > 1 ? `ลายที่ ${d + 1} · ` : ""}${nm || (list.length > 1 ? `หน้า ${j + 1}` : `ลายที่ ${d + 1}`)}`),
+    })),
+  );
+}
+
 /** รายการนี้ติ๊ก "ไม่ต้องทำแบบ" ไว้ (ยอดเพิ่ม/ค่าบริการ) — ดู OrderItem.noProof */
 export function proofExempt(item: OrderItem): boolean {
   return !!item.noProof;
@@ -2814,10 +2853,14 @@ export function isSelfDesigned(item: OrderItem): boolean {
  */
 export function allSelfDesignedApproved(order: Order): boolean {
   if (!order.items.length) return false;
+  // ต้องมีรายการจริงที่มีแบบอย่างน้อย 1 รายการ (ใบที่มีแต่บรรทัดค่าธรรมเนียมไม่นับ)
+  if (!order.items.some((it) => proofsOf(it).length)) return false;
   return order.items.every((it) => {
     const proofs = proofsOf(it);
     // ยอดเพิ่ม/ค่าบริการที่ไม่ต้องทำแบบ = ไม่มีอะไรให้ตรวจ ถือว่าผ่าน
-    if (!proofs.length && proofExempt(it)) return true;
+    // + บรรทัดค่าธรรมเนียม (🎨 Add on ค่าคละลาย #designfee · "ค่า…") กติกาเดียวกับ proofBlockers
+    //   เดิมไม่นับ → ลูกค้าออกแบบเองแต่มีค่าคละลาย ไม่เคยข้ามขั้นทำแบบ (OD-261023-1997 · 23 ต.ค. 69)
+    if (!proofs.length && (proofExempt(it) || isFeeLine(it))) return true;
     if (!proofs.length) return false;
     // แบบชุดนี้ต้องมาจากจอวางลายของลูกค้า และอนุมัติครบทุกรูป
     return isSelfDesigned(it) && proofs.every((p) => p.review === "อนุมัติ");
@@ -2831,6 +2874,7 @@ export function allSelfDesignedApproved(order: Order): boolean {
 export function graphicTodoItems(order: Order): OrderItem[] {
   return order.items.filter((it) => {
     if (isSelfDesigned(it)) return false; // ลูกค้าทำมาแล้ว กราฟฟิกไม่ต้องแตะ
+    if (!proofsOf(it).length && isFeeLine(it)) return false; // บรรทัดค่าธรรมเนียม ไม่มีแบบให้ทำ (เหมือน proofBlockers)
     return proofMissing(it, order) || it.proofStatus === "ขอแก้ไข";
   });
 }
@@ -3176,6 +3220,12 @@ export function parkForSlipReview(o: Order): Order {
   if (o.status === "รอชำระเงิน") return { ...o, status: "รอตรวจสอบ" };
   if (!REOPEN_FOR_BALANCE.includes(o.status)) return o;
   return { ...o, status: "รอตรวจสอบ", reopenedFrom: o.reopenedFrom ?? o.status };
+}
+
+/** ⏳ รายการที่ยังรอร้านใส่/ตรวจราคา — ลูกค้ายังโอนไม่ได้ (ราคา ฿0 รอตีราคา หรือ priceHold) · ใบเคลม/ส่งฟรีตั้งใจ ฿0 ไม่นับ */
+export function itemsAwaitingPrice(o: Pick<Order, "items" | "freeOf" | "claimOf" | "claimReason">): OrderItem[] {
+  if (isFreeOrder(o as Order) || o.claimReason) return [];
+  return o.items.filter((it) => it.qty > 0 && (it.unitPrice <= 0 || !!it.priceHold));
 }
 
 /** 💬✋ ราคาบรรทัดนี้แอดมินตั้งเอง (ตีราคาพร้อมที่มา หรือแก้ราคา/หน่วยในหน้าออเดอร์) — ห้ามคิดราคาตารางทับตอนแก้จำนวน/ล็อตขยับ */

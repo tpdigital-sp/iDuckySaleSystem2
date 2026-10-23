@@ -35,8 +35,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "มีรายการเข้าใบเพิ่มระหว่างนี้ — ตรวจราคาชุดใหม่อีกรอบ", priceCheck: c }, { status: 409 });
 
   const by = actor.name?.trim() || actor.username;
-  const next = withLog({ ...o, priceCheck: { ...c, ackAt: new Date().toISOString(), ackBy: by } }, by, "ตรวจราคาแล้ว", `หลัง${c.what}`);
+  // ⏸ ตรวจแล้ว = ปลดรายการที่พักไว้ (priceHold) ให้ลูกค้าโอนได้ตามราคาที่อยู่ในใบตอนนี้
+  const unheld = o.items.filter((it) => it.priceHold).map((it) => it.name);
+  const items = unheld.length ? o.items.map((it) => (it.priceHold ? { ...it, priceHold: undefined } : it)) : o.items;
+  const next = withLog(
+    { ...o, items, priceCheck: { ...c, ackAt: new Date().toISOString(), ackBy: by } },
+    by,
+    "ตรวจราคาแล้ว",
+    `หลัง${c.what}${unheld.length ? ` · ปลดพักราคา ${unheld.join(", ")} (ลูกค้าโอนได้แล้ว)` : ""}`
+  );
   const { order: saved, error } = await updateOrder(sb, next, { prev: o, by });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, priceCheck: saved.priceCheck ?? null, savedAt: saved.savedAt, log: saved.log });
+  return NextResponse.json({ ok: true, priceCheck: saved.priceCheck ?? null, savedAt: saved.savedAt, log: saved.log, ...(unheld.length ? { items: saved.items } : {}) });
 }

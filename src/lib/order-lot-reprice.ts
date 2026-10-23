@@ -1,5 +1,5 @@
 import { adminPriced, isFreeOrder, type Order, type OrderItem } from "@/lib/admin-data";
-import { repriceCartGroups, type Product } from "@/lib/products";
+import { ART_BACK_LABEL, ART_LABEL, RATE_LABEL, REUSE_ART_LABEL, repriceCartGroups, type Product } from "@/lib/products";
 
 /**
  * 🧮 ลูกค้าสั่งเพิ่มในออเดอร์เดิมจนยอดรวมทั้งใบเข้าเรทส่ง → "ราคาต่อชิ้นต้องเท่ากันทั้งบิล"
@@ -97,12 +97,15 @@ export async function repriceOrderLot(
     const computed = after[n]?.unitPrice ?? 0;
     // สินค้าถูกลบ/ตารางไม่มีราคาสเปคนี้แล้ว → คงราคาเดิม ดีกว่าทำบรรทัดเป็นศูนย์
     if (!(computed > 0) || !prods.has(it.productId)) return;
+    // ✋ ราคาที่แอดมินตั้งเอง: บรรทัดใหม่ carryAdminSurcharge คิดให้ทีหลัง · บรรทัดเดิมลดได้แค่ส่วนที่ตารางถูกลง (ค่าดีเทลที่บวกไว้ยังอยู่)
+    if (adminPriced(it) && added.has(idx)) return;
+    let to: number;
     if (!added.has(idx)) {
       const base = beforeAt.get(n);
       // ของเดิม: ต้องถูกลงเพราะของที่เพิ่งเพิ่มเท่านั้น (ไม่มีฐานเทียบ = ไม่แตะ)
       if (!(base !== undefined && base > 0 && computed < base)) return;
-    }
-    const to = Math.min(it.unitPrice, computed); // ลดอย่างเดียว
+      to = adminPriced(it) ? Math.round(it.unitPrice - (base - computed)) : Math.min(it.unitPrice, computed); // ลดอย่างเดียว
+    } else to = Math.min(it.unitPrice, computed); // ลดอย่างเดียว
     if (to === it.unitPrice) return;
     items[idx] = { ...it, unitPrice: to };
     changed.push({ name: it.name, from: it.unitPrice, to, qty: it.qty });
@@ -196,4 +199,82 @@ export function tableUnitPrices(items: OrderItem[], productOf: (id: string) => P
   const m = new Map<number, number>();
   idxs.forEach((i, n) => m.set(i, got[n]?.unitPrice ?? 0));
   return m;
+}
+
+/** คีย์ตัวเลือกที่ไม่นับตอนเทียบ "สเปคเดียวกัน" — เรทสลับตามจำนวน · ภาพลาย/ไฟล์เก่า · ลิงก์/อีเมล ต่างกันทุกลายอยู่แล้ว */
+const SPEC_IGNORE = new Set([RATE_LABEL, ART_LABEL, ART_BACK_LABEL, REUSE_ART_LABEL]);
+function specKey(sel: Record<string, string> | undefined): string {
+  return Object.entries(sel ?? {})
+    .filter(([k, v]) => !SPEC_IGNORE.has(k) && !k.startsWith("ตำแหน่งลาย") && typeof v === "string" && v.trim() && !/https?:\/\/|@/.test(v))
+    .map(([k, v]) => `${k.trim()}=${v.trim()}`)
+    .sort()
+    .join("\n");
+}
+
+export type SurchargeCarry = { name: string; extra: number; from: number; to: number; qty: number };
+
+/**
+ * ✋➕ ลูกค้าสั่งเพิ่มสินค้าที่แอดมินเคยแก้ราคาเองในใบนี้ (งานดีเทล บวกเพิ่มจากราคาตาราง) — เจ้าของร้านสั่ง 23 ต.ค. 69 (OD-261015-7299)
+ * หน้าร้านไม่รู้ค่าดีเทล คิดราคาตารางล้วน (฿309 ทั้งที่ร้านตีไว้ ฿434) → พนักงานต้องตามแก้ทุกรอบ
+ *
+ * - สเปคตรงกับบรรทัดเดิมที่ราคาตั้งเอง → ส่วนบวก = ราคาบรรทัดเดิม − ราคาตารางของบรรทัดนั้น (ก่อนของใหม่เข้า)
+ *   ของใหม่ = ราคาตารางหลังรวมล็อต + ส่วนบวก → ขั้นราคาไม่ขยับ = ราคาเท่าบรรทัดเดิมพอดี · ล็อตโตจนถูกลง = ได้ส่วนลดตามจำนวนด้วย
+ * - สินค้าเดียวกันแต่สเปคไม่ตรง / บรรทัดเดิมถูกกว่าตาราง (ส่วนลดพิเศษ) / หาราคาตารางไม่ได้ → priceHold ยังโอนไม่ได้จนพนักงานตรวจราคา
+ *
+ * @param before รายการเดิม (ล็อตก่อนของใหม่เข้า) · @param merged before + ของใหม่ต่อท้าย (ราคาหลัง repriceOrderLot แล้ว)
+ */
+export function carryAdminSurcharge(
+  before: OrderItem[],
+  merged: OrderItem[],
+  productOf: (id: string) => Product | undefined,
+  now: string = new Date().toISOString()
+): { items: OrderItem[]; carried: SurchargeCarry[]; held: { name: string; why: string }[] } {
+  const manual = before.map((it, i) => ({ it, i })).filter(({ it }) => adminPriced(it) && it.qty > 0 && it.unitPrice > 0);
+  if (!manual.length) return { items: merged, carried: [], held: [] };
+  const tBefore = tableUnitPrices(before, productOf);
+  const tAfter = tableUnitPrices(merged, productOf);
+  const items = [...merged];
+  const carried: SurchargeCarry[] = [];
+  const held: { name: string; why: string }[] = [];
+  for (let j = before.length; j < merged.length; j++) {
+    const it = merged[j];
+    const same = manual.filter(({ it: m }) => m.productId === it.productId);
+    if (!same.length || it.productId.includes("#")) continue;
+    const hold = (why: string) => {
+      items[j] = { ...it, priceHold: why };
+      held.push({ name: it.name, why });
+    };
+    const key = specKey(it.sel);
+    const match = same.find(({ it: m }) => specKey(m.sel) === key);
+    if (!match) {
+      hold("สินค้านี้ร้านเคยแก้ราคาเองในใบนี้ แต่ตัวเลือกไม่ตรงกับรายการเดิม — ต้องตรวจราคาก่อน");
+      continue;
+    }
+    const base = tBefore.get(match.i) ?? 0;
+    const table = tAfter.get(j) ?? 0;
+    const extra = Math.round(match.it.unitPrice - base);
+    if (!(base > 0) || !(table > 0)) {
+      hold("หาราคาตารางของสเปคนี้ไม่เจอ — ต้องตรวจราคาก่อน");
+      continue;
+    }
+    if (extra < 0) {
+      hold(`รายการเดิมร้านให้ราคาพิเศษต่ำกว่าตาราง (฿${match.it.unitPrice.toLocaleString()} จากตาราง ฿${base.toLocaleString()}) — ต้องตรวจราคาก่อน`);
+      continue;
+    }
+    if (extra === 0) continue;
+    const to = Math.round(table + extra);
+    items[j] = {
+      ...it,
+      unitPrice: to,
+      priceManual: { by: match.it.priceManual?.by ?? "ร้าน", at: now },
+      quoteNote: `ราคาตาราง + ค่างานดีเทล ฿${extra.toLocaleString()}/ชิ้น ตามที่ร้านตีราคาไว้ในออเดอร์นี้`,
+    };
+    carried.push({ name: it.name, extra, from: it.unitPrice, to, qty: it.qty });
+  }
+  return { items, carried, held };
+}
+
+/** "กรอบรูป ฿279 → ฿434 (+฿155 ค่าดีเทล · 2 ชิ้น)" */
+export function surchargeNote(c: SurchargeCarry[]): string {
+  return c.map((x) => `${x.name} ฿${x.from.toLocaleString()} → ฿${x.to.toLocaleString()} (+฿${x.extra.toLocaleString()} ค่าดีเทล · ${x.qty} ชิ้น)`).join(" · ");
 }

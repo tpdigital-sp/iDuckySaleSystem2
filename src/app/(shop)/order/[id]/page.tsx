@@ -12,7 +12,7 @@ import { artQtyOf, formatPrice, productLineOrder, type Product } from "@/lib/pro
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { addOnDisplayName, balanceNet, isFreeOrder, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, shipAutoFollowNow, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, balanceNet, isFreeOrder, itemsAwaitingPrice, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, shipAutoFollowNow, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, pairGiftProof, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -338,7 +338,7 @@ export default function CustomerOrderPage() {
     if (!order || order.status !== "รอชำระเงิน") return;
     if (isFreeOrder(order)) return; // 🎁 ใบส่งฟรี/เคลม — ไม่มียอดต้องชำระ ไม่ต้องเตือนเงื่อนไขก่อนโอน
     const isClaim = !!order.claimReason;
-    const quoting = !isClaim && order.items.some((it) => it.qty > 0 && it.unitPrice <= 0);
+    const quoting = !isClaim && itemsAwaitingPrice(order).length > 0;
     if (quoting) return; // ยังรอตีราคา — หน้าแจ้งโอนยังไม่เปิด ไม่ต้องเตือน
     const paid =
       !!order.slipUrl || !!order.slipPath || !!order.paidReportedAt || (order.paidTotal ?? 0) > 0 || !!order.deposit?.firstPaidAt;
@@ -675,8 +675,8 @@ export default function CustomerOrderPage() {
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   // รายการที่ยังรอแอดมินตีราคา (งานกำหนดขนาดเอง ฯลฯ ราคายัง ฿0) — ต้องใส่ราคาครบก่อนถึงเปิดหน้าแจ้งโอน
   // กันลูกค้าโอนทั้งที่ยอดรวมยังไม่ครบทุกรายการ · ออเดอร์เคลมตั้งใจ ฿0 ไม่นับ
-  const pendingQuote =
-    isFreeOrder(order) || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
+  // ⏸ รวมรายการที่ร้านพักไว้ตรวจราคา (priceHold — สั่งเพิ่มสินค้าที่ร้านเคยแก้ราคาเอง แต่สเปคไม่ตรง)
+  const pendingQuote = itemsAwaitingPrice(order);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
   // 🧾 ลูกค้าหัก ณ ที่จ่าย: ยอดค้างตามบิลยังมีภาษีส่วนของมันปนอยู่ — ตัวเลขที่บอกให้โอนต้องหักออกแล้ว (OD-261001-8513)
@@ -980,7 +980,7 @@ export default function CustomerOrderPage() {
           <ul className="mt-2 space-y-0.5">
             {pendingQuote.map((it, i) => (
               <li key={i} className="text-xs font-semibold">
-                • {it.name} × {it.qty.toLocaleString("th-TH")} — 💬 รอตีราคา
+                • {it.name} × {it.qty.toLocaleString("th-TH")} — {it.priceHold ? "🔎 รอร้านตรวจราคา" : "💬 รอตีราคา"}
               </li>
             ))}
           </ul>

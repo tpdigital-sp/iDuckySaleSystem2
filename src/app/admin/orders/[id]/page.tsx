@@ -130,6 +130,7 @@ import {
   PROOF_STYLES,
   proofsOf,
   selfDesigned,
+  selfDesignedProofs,
   proofPurged,
   addedAfterProofIdx,
   STATUS_STYLES,
@@ -198,6 +199,7 @@ import ShipWithStrip, { ShipWithNoteWarn, ShipWithPicker, ShipWithSuggest, useSh
 import { alreadyShipped, isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
+import { SideSheet } from "@/components/admin/SideSheet";
 import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
@@ -1466,7 +1468,7 @@ export default function AdminOrderDetailPage() {
   function mayQuote(it: OrderItem): boolean {
     if (!mayEdit || !seesMoney || !order) return false;
     if (isFreeOrder(order)) return false; // 🎁 เคลม/ส่งฟรี ตั้งใจ ฿0 — ไม่ตีราคา (เซิร์ฟเวอร์ปัดใบ freeOf ที่ยอด > 0 อยู่แล้ว)
-    if (it.unitPrice <= 0) return true;
+    if (it.unitPrice <= 0 || it.priceHold) return true; // ⏸ รายการที่พักรอตรวจราคา — ลูกค้ายังโอนส่วนนี้ไม่ได้ แก้ได้
     const moneyIn = (order.paidTotal ?? 0) > 0 || !!order.slipUrl || !!order.slipPath || !!order.deposit?.firstPaidAt;
     return !moneyIn;
   }
@@ -1500,6 +1502,7 @@ export default function AdminOrderDetailPage() {
         patch.unitPrice = value;
         // ✋ จำว่าราคานี้แอดมินตั้งเอง — กด +/− จำนวนทีหลังต้องคงราคานี้ ไม่คิดตารางทับ (OD-261015-7299: ฿434 กลายเป็น ฿279)
         patch.priceManual = value > 0 ? { by: actor, at: new Date().toISOString() } : undefined;
+        if (it.priceHold) patch.priceHold = undefined; // ⏸ แก้ราคาแล้ว = ตรวจแล้ว ลูกค้าโอนได้
         logs.push(
           `${it.unitPrice > 0 ? `${formatPrice(it.unitPrice)} → ` : ""}${formatPrice(value)}/หน่วย ×${it.qty.toLocaleString("th-TH")} = ${formatPrice(value * it.qty)}`
         );
@@ -1515,9 +1518,22 @@ export default function AdminOrderDetailPage() {
       }
     }
 
+    // ⏸ กดยืนยันราคาเดิมของรายการที่พักไว้ = ตรวจแล้ว ปลดพัก (ราคาไม่ขยับ)
+    if (it.priceHold && price !== undefined && raw !== "" && patch.unitPrice === undefined) {
+      patch.priceHold = undefined;
+      patch.priceManual = { by: actor, at: new Date().toISOString() };
+      logs.push(`ยืนยันราคา ${formatPrice(it.unitPrice)}/หน่วย · ปลดพักราคา (ลูกค้าโอนได้)`);
+    }
     if (!logs.length) return; // ไม่มีอะไรเปลี่ยน — ไม่ต้องเขียนฐาน/ไม่ต้องรกประวัติ
     const items = order.items.map((x, i) => (i === itemIndex ? { ...x, ...patch } : x));
-    const what = patch.unitPrice !== undefined ? (it.unitPrice > 0 ? "แก้ราคา/หน่วย" : "ตีราคา") : "ที่มาของราคา";
+    const what =
+      patch.unitPrice !== undefined
+        ? it.unitPrice > 0
+          ? "แก้ราคา/หน่วย"
+          : "ตีราคา"
+        : it.priceHold && "priceHold" in patch
+          ? "ตรวจราคาแล้ว"
+          : "ที่มาของราคา";
     applyOrder(withLog({ ...order, items }, actor, what, `${it.name}: ${logs.join(" · ")}`));
   }
   // ♻️ ทำงานใหม่จากออเดอร์นี้ — เคลม (ฟรี) หรือสั่งซ้ำ (คิดเงิน)
@@ -4562,7 +4578,8 @@ export default function AdminOrderDetailPage() {
    * @param remake 🔁 เปิดมาเพื่อ "ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่" จากเครื่องร้าน (&files=1) — จอโหลดแบบเสร็จแล้วกด 💾 บันทึกกลับเข้าออเดอร์ให้เอง
    *               ใช้กับใบที่สั่งจากมือถือ (ได้ไฟล์สำรอง -pdf.ai ไม่แยกเลเยอร์) หรือใบลูกค้าทั่วไปที่ยังไม่มีไฟล์ (16 ต.ค. 69 OD-261016-6709)
    */
-  function openCalDesign(itemIndex: number, remake = false) {
+  /** @param view 👁 ดูอย่างเดียว (&view=1) — ฝ่ายผลิต/คนไม่มีสิทธิ์แก้แบบ เปิดดูได้ ไม่มีปุ่มบันทึก (23 ต.ค. 69) */
+  function openCalDesign(itemIndex: number, remake = false, view = false) {
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it) return;
@@ -4586,7 +4603,7 @@ export default function AdminOrderDetailPage() {
       return;
     }
     window.open(
-      `${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}${remake ? "&files=1" : ""}`,
+      `${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}${remake ? "&files=1" : ""}${view ? "&view=1" : ""}`,
       "_blank",
       "noopener",
     );
@@ -4809,24 +4826,19 @@ export default function AdminOrderDetailPage() {
       if (!specs.length) return it;
       const arts = it.artworkUrls ?? [];
       const sourceSet = new Set(specs.map((sp) => sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1]).filter(Boolean) as string[]);
-      const ready =
-        arts.length === specs.length
-          ? arts
-          : arts.filter((u) => !sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u));
-      if (ready.length !== specs.length) return it; // จับคู่ไม่ลงตัว ปล่อยให้ทีมงานจัดการเอง
+      // ไฟล์ครบชุดก่อน · ไม่ลงตัวค่อยลองตัดรูปต้นฉบับที่ติดมา (ใบเก่า) — กติกาเดียวกับ checkout (selfDesignedProofs · รองรับงานหลายหน้า 23 ต.ค. 69)
+      const proofs =
+        selfDesignedProofs(it.sel, arts, at) ??
+        selfDesignedProofs(
+          it.sel,
+          arts.filter((u) => !sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u)),
+          at,
+        );
+      if (!proofs) return it; // จับคู่ไม่ลงตัว ปล่อยให้ทีมงานจัดการเอง
       changed = true;
       return {
         ...it,
-        proofs: ready.map((url, k) => {
-          const qty = Number(specs[k]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
-          return {
-            url,
-            at,
-            review: "อนุมัติ" as const,
-            note: `ลายที่ ${k + 1} — ลูกค้าจัดวางเองบนเทมเพลต (อนุมัติอัตโนมัติ)`,
-            ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}),
-          };
-        }),
+        proofs,
         proofStatus: "อนุมัติ" as const,
         proofUpdatedAt: at,
       };
@@ -5488,7 +5500,13 @@ export default function AdminOrderDetailPage() {
         onChecked={(r) =>
           setOrder((cur) =>
             cur
-              ? { ...cur, priceCheck: r.priceCheck ?? undefined, ...(r.savedAt ? { savedAt: r.savedAt } : {}), ...(r.log ? { log: r.log } : {}) }
+              ? {
+                  ...cur,
+                  priceCheck: r.priceCheck ?? undefined,
+                  ...(r.savedAt ? { savedAt: r.savedAt } : {}),
+                  ...(r.log ? { log: r.log } : {}),
+                  ...(r.items ? { items: r.items } : {}), // ⏸ ตรวจแล้วเซิร์ฟเวอร์ปลด priceHold ให้
+                }
               : cur
           )
         }
@@ -7132,6 +7150,22 @@ export default function AdminOrderDetailPage() {
                         product={productOfItem(it.productId)}
                         onSetPerUnit={mayProof || mayEdit ? (per) => setItemPerUnit(i, per) : undefined}
                       />
+                      {/* ⏸ ลูกค้าสั่งเพิ่มสินค้าที่ร้านเคยแก้ราคาเอง แต่สเปคไม่ตรง → ลูกค้ายังโอนไม่ได้จนกว่าจะแก้/ยืนยันราคา */}
+                      {it.priceHold && seesMoney && (
+                        <button
+                          type="button"
+                          disabled={!mayQuote(it)}
+                          onClick={() => {
+                            setPriceDraft(String(it.unitPrice));
+                            setEditPrice(i);
+                          }}
+                          title="กดเพื่อแก้ราคา หรือกด Enter ยืนยันราคาเดิม — ลูกค้าจะโอนได้ทันที"
+                          className="mt-1 block w-full rounded-lg bg-amber-50 px-2 py-1 text-left text-[11px] font-semibold leading-snug text-amber-800 ring-1 ring-amber-300 transition enabled:hover:bg-amber-100"
+                        >
+                          <span className="text-[10px] font-bold text-amber-600">⏸ รอตรวจราคาก่อนลูกค้าโอน · กดแก้/ยืนยันราคา</span>
+                          <span className="block">{it.priceHold}</span>
+                        </button>
+                      )}
                       {/* 📝 ที่มาของราคาที่แอดมินตีไว้ (ลูกค้าเห็นด้วย) — กดเพื่อเปิดแผงตีราคาไปแก้ */}
                       {it.quoteNote && seesMoney && (
                         <button
@@ -7820,6 +7854,21 @@ export default function AdminOrderDetailPage() {
                               </p>
                             )}
 
+                            {/* 👁 ฝ่ายผลิต (ไม่มีสิทธิ์แก้แบบ) เปิดดูแบบในจอออกแบบได้ — ดูอย่างเดียว ไม่มีปุ่มบันทึก (เจ้าของร้านสั่ง 23 ต.ค. 69 OD-261023-1997) */}
+                            {!mayDesign && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
+                              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-2 py-1.5 ring-1 ring-violet-200">
+                                <button
+                                  type="button"
+                                  onClick={() => openCalDesign(i, false, true)}
+                                  className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-violet-700"
+                                  title="เปิดจอออกแบบดูแบบที่ลูกค้าทำ (เลื่อนดูทีละหน้า · ซูมได้) — แก้/บันทึกไม่ได้"
+                                >
+                                  👁 ดูแบบในจอออกแบบ
+                                </button>
+                                <span className="text-[10.5px] font-semibold leading-snug text-violet-900">ดูอย่างเดียว — แก้แบบต้องให้กราฟฟิก/แอดมินเปิด</span>
+                              </div>
+                            )}
+
                             {/* ✏️ เปิดแบบที่ลูกค้าทำบนเว็บกลับมาแก้ในจอสร้างปฏิทิน (ออเดอร์ตั้งแต่ 15 ต.ค. 69 · ของเก่าไม่มีลิงก์แบบ) */}
                             {mayDesign && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
                               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 ring-1 ring-sky-200">
@@ -7875,6 +7924,13 @@ export default function AdminOrderDetailPage() {
                                 </span>
                               </div>
                             )}
+
+                            {/* 📮 พิมพ์ 2 ด้าน: ใบไหนด้านหน้า/ด้านหลังเป็นรูปไหน — ไฟล์ .pdf/.ai ไม่บอก (OD-261023-1997 · 23 ต.ค. 69) */}
+                            <SideSheet
+                              it={it}
+                              title={`${order.id} · ${it.name}`}
+                              onOpen={(src, caption) => setLightbox({ src, alt: `${it.name} ${caption}`, caption: `${it.name} — ${caption}` })}
+                            />
 
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (

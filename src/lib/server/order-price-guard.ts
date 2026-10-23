@@ -30,7 +30,7 @@ const MAX_PRICE = 10_000_000;
 const DEFAULT_FREE_SHIPPING_MIN = 999;
 
 /** ฟิลด์เรื่องเงิน/หมายเหตุภายในที่ลูกค้าไม่มีสิทธิ์ส่ง — ตัดทิ้งก่อนบันทึก */
-const ADMIN_ONLY_FIELDS = ["discount", "discountPct", "quoteNote", "priceManual", "adminNote"] as const;
+const ADMIN_ONLY_FIELDS = ["discount", "discountPct", "quoteNote", "priceManual", "priceHold", "adminNote"] as const;
 
 export interface CleanItemsResult {
   items: OrderItem[];
