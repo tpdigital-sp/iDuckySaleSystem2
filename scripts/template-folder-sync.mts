@@ -52,7 +52,8 @@ const { data: rows, error } = await sb.from("products").select("id,data").eq("ca
 if (error) die(error.message);
 const all = (rows ?? []) as Row[];
 const inCat = all.filter((r) => (r.data.category ?? "") === CATEGORY);
-const norm = (s: string) => s.normalize("NFC").replace(/\.[^.]+$/, "").replace(/\s+/g, " ").trim();
+// ช่องว่างรอบขีดไม่นับ — ไฟล์ "แบบผูก - L.ai" = ชุด "แบบผูก-L" (ปลอกคอสัตว์เลี้ยง 23 ต.ค. 69)
+const norm = (s: string) => s.normalize("NFC").replace(/\.[^.]+$/, "").replace(/\s+/g, " ").replace(/\s*-\s*/g, "-").trim();
 const maxSort = Math.max(-1, ...all.map((r) => r.data.sort ?? -1));
 const md5 = (b: Buffer) => createHash("md5").update(b).digest("hex");
 const rid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 11)}`;
