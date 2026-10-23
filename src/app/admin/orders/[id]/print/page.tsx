@@ -1317,7 +1317,7 @@ function OrderDocs({
               </div>
             )}
             {!shipRiderOf && labelOk && (<>
-            {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
+            {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด + เลขออเดอร์ */}
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
@@ -1338,6 +1338,8 @@ function OrderDocs({
                   <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
+                {/* เลขออเดอร์ตัวอ่านได้บนส่วนติดกล่อง — ตัดใบงานออกแล้วยังรู้ว่ากล่องนี้ใบไหน ทั้งส่ง/รับเอง (พนักงานขอ 23 ต.ค. 69) */}
+                <p className="mt-1 font-mono text-base font-extrabold leading-none tracking-tight">{order.id}</p>
                 {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok && (
                   // 🧾➕ มากกว่า 1 ใบ = ตราม่วงพื้นทึบ (เจ้าของร้านสั่ง 24 ก.ย. 69: ให้สะดุดตาต่างจากใบกำกับใบเดียว)
