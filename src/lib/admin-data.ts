@@ -865,6 +865,11 @@ export interface OrderItem {
    *    บันทึกภายในที่ลูกค้าไม่เห็น ใช้ adminNote (หมายเหตุใบงาน) แทน
    */
   quoteNote?: string;
+  /**
+   * ✋ แอดมินแก้ราคา/หน่วยเองในหน้าออเดอร์ (ไม่ได้ใส่ "ที่มาของราคา") — แก้จำนวน/ล็อตขยับทีหลังต้องคงราคานี้ ไม่คิดตารางทับ
+   * (OD-261015-7299 · 23 ต.ค. 69: แก้เป็น ฿434 แล้วกด + จำนวน ระบบคิดตารางทับเหลือ ฿279) · ดู adminPriced()
+   */
+  priceManual?: { by: string; at: string };
   /** ส่วนลดเฉพาะรายการนี้ (บาท รวมทั้งบรรทัด) — แอดมินใส่เอง หักออกจากยอดรวม */
   discount?: number;
   /** ส่วนลดเฉพาะรายการนี้เป็น % ของราคาบรรทัด (มีค่า = ใช้ % แทนบาท) */
@@ -3171,6 +3176,11 @@ export function parkForSlipReview(o: Order): Order {
   if (o.status === "รอชำระเงิน") return { ...o, status: "รอตรวจสอบ" };
   if (!REOPEN_FOR_BALANCE.includes(o.status)) return o;
   return { ...o, status: "รอตรวจสอบ", reopenedFrom: o.reopenedFrom ?? o.status };
+}
+
+/** 💬✋ ราคาบรรทัดนี้แอดมินตั้งเอง (ตีราคาพร้อมที่มา หรือแก้ราคา/หน่วยในหน้าออเดอร์) — ห้ามคิดราคาตารางทับตอนแก้จำนวน/ล็อตขยับ */
+export function adminPriced(it: Pick<OrderItem, "quoteNote" | "priceManual">): boolean {
+  return !!it.quoteNote || !!it.priceManual;
 }
 
 /**

@@ -176,6 +176,7 @@ import {
   awaitingPayment,
   canMarkFree,
   clearStageMemory,
+  adminPriced,
   isFreeOrder,
 } from "@/lib/admin-data";
 import { overpaidAmount, overpayOutstanding, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
@@ -1497,6 +1498,8 @@ export default function AdminOrderDetailPage() {
       const value = Math.max(0, Math.round(Number(raw) || 0));
       if (value !== it.unitPrice) {
         patch.unitPrice = value;
+        // ✋ จำว่าราคานี้แอดมินตั้งเอง — กด +/− จำนวนทีหลังต้องคงราคานี้ ไม่คิดตารางทับ (OD-261015-7299: ฿434 กลายเป็น ฿279)
+        patch.priceManual = value > 0 ? { by: actor, at: new Date().toISOString() } : undefined;
         logs.push(
           `${it.unitPrice > 0 ? `${formatPrice(it.unitPrice)} → ` : ""}${formatPrice(value)}/หน่วย ×${it.qty.toLocaleString("th-TH")} = ${formatPrice(value * it.qty)}`
         );
@@ -7192,9 +7195,9 @@ export default function AdminOrderDetailPage() {
                         <span
                           className="flex w-24 shrink-0 items-center justify-center gap-0.5"
                           title={
-                            shopLine
+                            shopLine && !adminPriced(it)
                               ? "แก้จำนวนแล้วระบบคิดราคาขั้นบันได/เรทให้ใหม่เหมือนตะกร้า (ลงประวัติทุกครั้ง)"
-                              : it.quoteNote
+                              : adminPriced(it)
                                 ? "แก้จำนวน — คงราคา/หน่วยที่ตีไว้ (ลงประวัติทุกครั้ง)"
                                 : "แก้จำนวน — คงราคา/หน่วยเดิม (ลงประวัติทุกครั้ง)"
                           }

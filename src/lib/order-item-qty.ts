@@ -14,7 +14,7 @@ import {
   repriceCartGroups,
   type Product,
 } from "@/lib/products";
-import type { OrderItem } from "@/lib/admin-data";
+import { adminPriced, type OrderItem } from "@/lib/admin-data";
 
 /**
  * 🔢 แก้จำนวนของรายการในออเดอร์ให้ "เหมือนตะกร้า" — เจ้าของร้านสั่ง 10 ก.ย. 69
@@ -121,8 +121,8 @@ export function orderItemQtyChange(
     out.patch.selections = patchSelectionsText(it.selections ?? "", selChanged);
   }
 
-  // 💬 แอดมินตีราคาเองไว้ / งานที่ต้องตีราคา → คงราคาเดิม ไม่คิดใหม่
-  if (it.quoteNote || needsQuote(p, sel)) return out;
+  // 💬 แอดมินตีราคา/แก้ราคาเองไว้ / งานที่ต้องตีราคา → คงราคาเดิม ไม่คิดใหม่
+  if (adminPriced(it) || needsQuote(p, sel)) return out;
 
   const lines = items.map((x, i) => ({
     productId: x.productId,

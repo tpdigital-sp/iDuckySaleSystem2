@@ -1,4 +1,4 @@
-import { isFreeOrder, type Order, type OrderItem } from "@/lib/admin-data";
+import { adminPriced, isFreeOrder, type Order, type OrderItem } from "@/lib/admin-data";
 import { repriceCartGroups, type Product } from "@/lib/products";
 
 /**
@@ -127,7 +127,7 @@ export function lotRepriceNote(changed: LotRepriceLine[]): string {
  * - เทียบราคาตาราง "ก่อนหด" กับ "หลังหด" ของบรรทัดเดียวกัน (สมองเดียวกับตะกร้า repriceCartGroups ทั้งคู่)
  *   ขึ้นราคาเฉพาะบรรทัดที่แพงขึ้น "เพราะล็อตหด" เท่านั้น — ตารางที่ร้านขยับเองไม่ไหลเข้าใบ
  * - ขึ้นเท่าส่วนต่างของตาราง แต่ไม่เกินราคาตารางหลังหด: ราคาพิเศษที่แอดมินตีต่ำกว่าตาราง ส่วนลดยังอยู่
- * - บรรทัดที่แอดมินตีราคาเอง (quoteNote) · ค่าบริการ # · งานพิเศษ ไม่แตะ · ใบเคลม/ใบ FlowAccount ไม่แตะ
+ * - บรรทัดที่แอดมินตีราคา/แก้ราคาเอง (adminPriced) · ค่าบริการ # · งานพิเศษ ไม่แตะ · ใบเคลม/ใบ FlowAccount ไม่แตะ
  *
  * ⇅ ขาลงด้วย (OD-261020-2478 · 20 ต.ค. 69 "ราคายังไม่เสถียร"): แอดมินแก้จำนวนบรรทัดหนึ่งจาก 5 → 65 รวมล็อต 85 ใบ = ฿105
  * แต่อีกบรรทัด 20 ใบค้าง ฿120 (ราคาตอนล็อตยังเล็ก) — แก้จำนวนคิดราคาให้แค่บรรทัดที่แก้ · ตัวนี้เดิมขึ้นอย่างเดียว
@@ -167,7 +167,7 @@ export function relotItems(
   const changed: LotRepriceLine[] = [];
   after.forEach((a, j) => {
     const it = items[j];
-    if (skipSet.has(j) || it.quoteNote || !productOf(it.productId)) return;
+    if (skipSet.has(j) || adminPriced(it) || !productOf(it.productId)) return;
     const pi = prevIndex[j] ?? -1;
     const b = pi >= 0 ? before.get(pi) : undefined;
     // ราคาตารางหาไม่เจอ (สเปคเก่า/สินค้าถูกลบ) หรือขั้นตารางไม่ได้ขยับเพราะล็อตเปลี่ยน → คงเดิม

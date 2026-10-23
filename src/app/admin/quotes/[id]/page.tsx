@@ -282,7 +282,9 @@ function QuoteDetailInner() {
     if (!it) return;
     const v = Math.max(0, Math.round(Number(text) || 0));
     if (v === it.unitPrice) return;
-    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, unitPrice: v } : x));
+    // ✋ ราคาที่แก้เองต้องคงไว้ตอนแก้จำนวนทีหลัง (adminPriced · OD-261015-7299) · ใส่ ฿0 = ปลดกลับไปคิดตาราง
+    const priceManual = v > 0 ? { by: actor, at: new Date().toISOString() } : undefined;
+    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, unitPrice: v, priceManual } : x));
     persistLog({ ...quote, items }, "แก้ราคา/หน่วย", `${it.name}: ${formatPrice(it.unitPrice)} → ${formatPrice(v)} (= ${formatPrice(v * it.qty)})`);
   }
 

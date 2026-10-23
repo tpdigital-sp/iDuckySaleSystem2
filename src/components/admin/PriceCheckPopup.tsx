@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react";
-import { priceCheckPending, type Order } from "@/lib/admin-data";
+import { adminPriced, priceCheckPending, type Order } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { tableUnitPrices } from "@/lib/order-lot-reprice";
 import { formatPrice, type Product } from "@/lib/products";
@@ -49,7 +49,7 @@ export function PriceCheckPopup({
     const state: "fee" | "self" | "wait" | "none" | "ok" | "off" =
       want === undefined
         ? "fee"
-        : it.quoteNote
+        : adminPriced(it)
           ? "self"
           : !loaded
             ? productsReady
@@ -236,7 +236,7 @@ export function RemovePriceCheck({
   const rows = after.map((it, j) => {
     const was = before[prevIndex[j]]?.unitPrice ?? it.unitPrice;
     const want = table.get(j);
-    const off = want !== undefined && want > 0 && !it.quoteNote && !!productOf(it.productId) && Math.round(want) !== Math.round(it.unitPrice);
+    const off = want !== undefined && want > 0 && !adminPriced(it) && !!productOf(it.productId) && Math.round(want) !== Math.round(it.unitPrice);
     return { it, j, was, want: Math.round(want ?? 0), off };
   });
   const offN = rows.filter((r) => r.off).length;
