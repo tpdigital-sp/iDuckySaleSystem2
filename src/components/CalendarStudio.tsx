@@ -95,6 +95,7 @@ import CanvasFrame3D from "@/components/CanvasFrame3D";
 import Banner3D from "@/components/Banner3D";
 import Bag3D from "@/components/Bag3D";
 import Bandana3D from "@/components/Bandana3D";
+import ClipPouch3D from "@/components/ClipPouch3D";
 import DoorHanger3D from "@/components/DoorHanger3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import type { StandMock } from "@/lib/stand-mock";
@@ -104,6 +105,7 @@ import type { CanvasMock } from "@/lib/canvas-mock";
 import type { BannerMock } from "@/lib/banner-mock";
 import type { BagMock } from "@/lib/bag-mock";
 import type { BandanaMock } from "@/lib/bandana-mock";
+import type { PouchMock } from "@/lib/pouch-mock";
 import type { DoorHangerMock } from "@/lib/door-hanger-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, traceAlphaMm, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
@@ -244,7 +246,7 @@ interface Props {
    * ☕🧊 พรีวิว 3D แก้วมัค (Product.calendarStudio.mock3d = "mug" · เจ้าของร้านสั่ง 16 ต.ค. 69) — ปุ่ม "ดูแบบ 3D" บนแถบบน
    * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
    */
-  mock3d?: MugMock | StandMock | CushionMock | FolderMock | BannerMock | BagMock | CanvasMock | DoorHangerMock | BandanaMock;
+  mock3d?: MugMock | StandMock | CushionMock | FolderMock | BannerMock | BagMock | CanvasMock | DoorHangerMock | BandanaMock | PouchMock;
   /**
    * 🧑‍💼 โหมดแอดมิน (สั่งแทนลูกค้า · เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC): กด ใช้แบบนี้/ใส่ตะกร้า ได้ทั้งที่ยังไม่ใส่รูป
    * — ถามยืนยันก่อน 1 ครั้ง แล้วทำไฟล์ช่องว่าง (ช่องรูปที่ว่างไม่พิมพ์) · สเปคติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกรู้ว่าต้องรอรูปจากลูกค้า
@@ -6174,6 +6176,8 @@ export default function CalendarStudio({
                       ? "ดูแบบ 3D — ป้ายไวนิลบนขาตั้งจริง หมุนดูได้รอบตัว"
                       : mock3d?.kind === "bag"
                       ? "ดูแบบ 3D — ลายบนถุงซิปล็อกโฮโลแกรมจริง หมุนดูหน้า-หลังได้รอบตัว"
+                      : mock3d?.kind === "pouch"
+                      ? "ดูแบบ 3D — ลายบนกระเป๋าต๊อบแต๊บผ้าจริง ปากคลิปสปริง หมุนดูหน้า-หลังได้รอบตัว"
                       : mock3d?.kind === "bandana"
                       ? "ดูแบบ 3D — ผ้าพันคอสัตว์เลี้ยงพันรอบคอจริง หมุนดูหน้า-ข้าง-หลังได้รอบตัว"
                       : mock3d?.kind === "canvas"
@@ -7391,6 +7395,10 @@ export default function CalendarStudio({
         )}
         {mug3d && mug3d !== "loading" && mock3d?.kind === "doorhanger" && (
           <DoorHanger3D key={`doorhanger-${mock3d.material}`} sheet={mug3d} backSheet={mug3dBack} sheetMm={{ w: W, h: H }} cut={tplCut} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
+        )}
+        {mug3d && mug3d !== "loading" && mock3d?.kind === "pouch" && (
+          // 👛 กระเป๋าต๊อบแต๊บ (23 ต.ค. 69) — ผืนกางออก: ด้านหน้าครึ่งบน · ด้านหลังครึ่งล่างกลับหัว · ปากคลิปสปริง
+          <ClipPouch3D key={`pouch-${mock3d.fabric}-${mock3d.thread}`} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
         )}
         {mug3d && mug3d !== "loading" && mock3d?.kind === "bandana" && (
           // 🐶 ปลอกคอสัตว์เลี้ยง (23 ต.ค. 69) — ผืนสามเหลี่ยม/ข้าวหลามตัดพับครึ่ง พันรอบคอหุ่นตามแบบในเรทราคา

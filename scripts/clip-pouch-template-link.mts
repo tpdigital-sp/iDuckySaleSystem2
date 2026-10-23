@@ -9,7 +9,8 @@
  * อาร์ตบอร์ด = ผืนกางออก (ตะเข็บ/พับเข้าด้านใน/ใส่ตัวหนีบ/ด้านหน้า/ด้านหลัง) · จับคู่ชุดกับค่าตัวเลือกด้วยตาราง PAIRS
  * ไฟล์ชุดแทนใหม่แล้ว (scripts/clip-pouch-template-replace.mts) → เส้นตัด = ขอบอาร์ตบอร์ดทั้งผืน · bleedMm 0
  *   (ไฟล์เดิมเส้นตัด = ขอบนอกแถบดำในสกิน inset ~5 มม.)
- * ไม่ตั้ง finishedMm — หัวจอขึ้นขนาดผืนกางออก (แบบแฟ้มจิ๋ว)
+ * finishedMm = ขนาดกระเป๋าตามค่าตัวเลือก (9.5x9cm → 95×90) → หัวจอ "งานออกแบบ 9.5×9 ซม." แทนผืนกาง 12×23.5
+ *   (เจ้าของร้านทัก 23 ต.ค. 69 "มันควรเป็นขนาดที่ลูกค้าเลือกมา")
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -77,7 +78,9 @@ for (const pair of PAIRS) {
   const cut = rectCurve(x, y, w, h);
   const bleed = Math.min(x, W - x - w);
   const { when: _w, choice: _c, choices: _cs, whiteUnder: _wu, finishedMm: _fm, ...fBase } = f0;
-  const nf: TemplateFile = { ...fBase, when: [{ label: SIZE, choices: [pair.choice] }], cutCurves: [cut] };
+  const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)cm$/.exec(pair.choice) ?? die(`อ่านขนาดจาก "${pair.choice}" ไม่ได้`);
+  const finishedMm = { w: Number(m[1]) * 10, h: Number(m[2]) * 10 };
+  const nf: TemplateFile = { ...fBase, when: [{ label: SIZE, choices: [pair.choice] }], cutCurves: [cut], finishedMm };
   const next: DesignTemplate = { ...t, files: [nf], bleedMm: bleed };
   const fr = templateFrame(next, nf);
   if (!fr || Math.abs(fr.trimWMm - (W - bleed * 2)) > 0.5) die(`${t.name}: กรอบงานจอออกแบบ ${fr?.trimWMm}×${fr?.trimHMm} ไม่ใช้ตัดตก ${bleed}`);
