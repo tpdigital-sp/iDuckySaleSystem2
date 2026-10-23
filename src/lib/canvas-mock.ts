@@ -7,7 +7,7 @@
  * ขนาดหน้างานจริงอ่านจากค่า "ขนาด" ที่ลูกค้าเลือก ("30x40cm") · อ่านไม่ได้ → components/CanvasFrame3D ถอดจากอาร์ตบอร์ด (ขอบ 60)
  */
 
-export type CanvasView = "front" | "right" | "left" | "back";
+export type CanvasView = "front" | "right" | "left" | "back" | "top" | "bottom";
 
 export interface CanvasMock {
   kind: "canvas";
@@ -17,7 +17,14 @@ export interface CanvasMock {
   label?: string;
 }
 
-export const CANVAS_VIEW_TH: Record<CanvasView, string> = { front: "ด้านหน้า", right: "ด้านขวา", left: "ด้านซ้าย", back: "ด้านหลัง" };
+export const CANVAS_VIEW_TH: Record<CanvasView, string> = {
+  front: "ด้านหน้า",
+  right: "ด้านขวา",
+  left: "ด้านซ้าย",
+  back: "ด้านหลัง",
+  top: "ด้านบน",
+  bottom: "ด้านล่าง",
+};
 
 /** ขอบรวมข้างละ (มม.) เมื่อถอดจากตัวเลือกไม่ได้ — ไฟล์ร้านทุกขนาดใช้ 60 (30x30 ใช้ 59) */
 export const CANVAS_WRAP_MM = 60;

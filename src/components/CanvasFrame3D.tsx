@@ -12,8 +12,18 @@
 import { useEffect, useRef, useState } from "react";
 import { CANVAS_VIEW_TH, CANVAS_WRAP_MM, type CanvasMock, type CanvasView } from "@/lib/canvas-mock";
 
-/** มุมกล้อง (เรเดียน รอบแกนตั้ง) — หน้างานหันไป +z */
-const VIEW_YAW: Record<CanvasView, number> = { front: 0, right: Math.PI / 2, left: -Math.PI / 2, back: Math.PI };
+/** มุมกล้อง — yaw รอบแกนตั้ง (หน้างานหันไป +z) · pitch ก้ม/เงย (บวก = มองจากบน · ลบ = มองจากล่าง) */
+const VIEW_CAM: Record<CanvasView, { yaw: number; pitch: number }> = {
+  front: { yaw: 0, pitch: 0.14 },
+  right: { yaw: Math.PI / 2, pitch: 0.14 },
+  left: { yaw: -Math.PI / 2, pitch: 0.14 },
+  back: { yaw: Math.PI, pitch: 0.14 },
+  // 👀 ด้านบน/ล่าง (เจ้าของร้านสั่ง 23 ต.ค. 69 "ให้ดูข้างล่างได้") — เฉียงหน้านิด ๆ ให้เห็นลายอ้อมขอบต่อจากหน้างาน
+  top: { yaw: 0.35, pitch: 1.05 },
+  bottom: { yaw: 0.35, pitch: -1.05 },
+};
+/** ก้ม/เงยได้สุด (ใกล้ ±90° แต่ไม่ถึง — lookAt เสียทิศเมื่อตรงดิ่ง) */
+const PITCH_MAX = 1.35;
 
 /**
  * ครอปส่วนของผืน (มม.) ลงผ้าใบ: พื้นขาว (ผ้าใบ) + ลาย + ลายทอผ้าใบจาง ๆ · k = พิกเซล/มม.
@@ -102,7 +112,7 @@ export default function CanvasFrame3D({
   const [view, setView] = useState<CanvasView>("front");
   const [zoom, setZoomState] = useState(1);
   const clampZ = (z: number) => Math.max(0.6, Math.min(3, z));
-  const cam = useRef({ yaw: 0.32, pitch: 0.14, zoom: 1, targetYaw: null as number | null, spin: false, dragging: false });
+  const cam = useRef({ yaw: 0.32, pitch: 0.14, zoom: 1, targetYaw: null as number | null, targetPitch: null as number | null, spin: false, dragging: false });
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const pts = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ d: number; z: number } | null>(null);
@@ -114,10 +124,11 @@ export default function CanvasFrame3D({
   const goView = (v: CanvasView) => {
     setView(v);
     const cur = cam.current.yaw;
-    let t = VIEW_YAW[v];
+    let t = VIEW_CAM[v].yaw;
     while (t - cur > Math.PI) t -= 2 * Math.PI;
     while (t - cur < -Math.PI) t += 2 * Math.PI;
     cam.current.targetYaw = t;
+    cam.current.targetPitch = VIEW_CAM[v].pitch;
     cam.current.spin = false;
     setSpin(false);
   };
@@ -202,6 +213,9 @@ export default function CanvasFrame3D({
         sun.shadow.radius = 4;
         scene.add(sun);
         scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+        // 🔦 ไฟเติมตามกล้อง (ไม่ทอดเงา) — มองจากด้านล่างแล้วผิวล่างไม่มืด (แดดอยู่บนเสมอ · 23 ต.ค. 69 "ให้ดูข้างล่างได้")
+        const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+        scene.add(fill);
 
         const geos: { dispose(): void }[] = [];
         const mats: { dispose(): void }[] = [];
@@ -221,7 +235,9 @@ export default function CanvasFrame3D({
           return t;
         };
         // 🧵 ผ้าใบ: ด้าน ไม่เงา · ลายพิมพ์ UV สีตรงตามแบบ
-        const fabric = (cv: HTMLCanvasElement) => m(new THREE.MeshStandardMaterial({ map: texOf(cv), roughness: 0.9, metalness: 0 }));
+        // shadowSide DoubleSide: แผ่นผ้าบาง (Plane) ต้องทอดเงาเต็ม — ค่าเริ่ม (หน้าหลังของ FrontSide) ทำให้เงาบนพื้นเป็นกรอบกลวง (23 ต.ค. 69)
+        const fabric = (cv: HTMLCanvasElement) =>
+          m(new THREE.MeshStandardMaterial({ map: texOf(cv), roughness: 0.9, metalness: 0, shadowSide: THREE.DoubleSide }));
         const woodTex = texOf(woodTile());
         woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
         woodTex.repeat.set(3, 3);
@@ -258,19 +274,25 @@ export default function CanvasFrame3D({
         bottom.position.set(0, 0, 0);
 
         // 🪵 โครงไม้สนด้านหลัง: 4 ด้าน (กว้างตามขนาดชิ้นงาน) + คานกลางเมื่อใหญ่ · แผ่นหลังผ้าใบดิบลึกเข้าไปติดหน้างาน
+        //   ⚠️ ถอยเข้าในจากผิวผ้าใบ FI มม. ทุกด้าน — เดิมผิวคานทับระนาบผ้าข้างพอดี (z-fighting) ไม้ทะลุผ้าเป็นลายแถบ (เจ้าของร้านทัก 23 ต.ค. 69)
+        const FI = 1.5;
+        const ow = fw - 2 * FI; // กรอบนอกของโครง
+        const oh = fh - 2 * FI;
         const bw = Math.max(32, Math.min(60, fw * 0.11));
+        const bd = D - FI - 0.6; // ลึกคาน (หน้าคานถอยจากผ้าหน้า FI · หลังคานเสมอขอบหลัง)
+        const bz = -D / 2 + bd / 2;
         const bar = (w: number, h: number, x: number, y: number) => {
-          const bx = add(new THREE.Mesh(g(new THREE.BoxGeometry(w, h, D - 0.6)), wood));
-          bx.position.set(x, y, -0.3);
+          const bx = add(new THREE.Mesh(g(new THREE.BoxGeometry(w, h, bd)), wood));
+          bx.position.set(x, y, bz);
           return bx;
         };
-        bar(fw - 0.4, bw, 0, fh - bw / 2);
-        bar(fw - 0.4, bw, 0, bw / 2);
-        bar(bw, fh - 2 * bw, -fw / 2 + bw / 2, fh / 2);
-        bar(bw, fh - 2 * bw, fw / 2 - bw / 2, fh / 2);
-        if (fh >= 700) bar(fw - 2 * bw, bw * 0.8, 0, fh / 2);
-        if (fw >= 700) bar(bw * 0.8, fh - 2 * bw, 0, fh / 2);
-        const backSheet = add(new THREE.Mesh(g(new THREE.PlaneGeometry(fw - 2 * bw + 1, fh - 2 * bw + 1)), rawBack), false);
+        bar(ow, bw, 0, fh - FI - bw / 2);
+        bar(ow, bw, 0, FI + bw / 2);
+        bar(bw, oh - 2 * bw, -ow / 2 + bw / 2, fh / 2);
+        bar(bw, oh - 2 * bw, ow / 2 - bw / 2, fh / 2);
+        if (fh >= 700) bar(ow - 2 * bw, bw * 0.8, 0, fh / 2);
+        if (fw >= 700) bar(bw * 0.8, oh - 2 * bw, 0, fh / 2);
+        const backSheet = add(new THREE.Mesh(g(new THREE.PlaneGeometry(ow - 2 * bw + 1, oh - 2 * bw + 1)), rawBack), false);
         backSheet.rotation.y = Math.PI;
         backSheet.position.set(0, fh / 2, D / 2 - 0.6);
 
@@ -343,6 +365,13 @@ export default function CanvasFrame3D({
               c.targetYaw = null;
             } else c.yaw += d * Math.min(1, dt * 7);
           } else if (c.spin && !c.dragging) c.yaw += dt * 0.55;
+          if (c.targetPitch != null) {
+            const d = c.targetPitch - c.pitch;
+            if (Math.abs(d) < 0.004) {
+              c.pitch = c.targetPitch;
+              c.targetPitch = null;
+            } else c.pitch += d * Math.min(1, dt * 7);
+          }
           const dist = BASE_DIST / c.zoom;
           const cp2 = Math.cos(c.pitch);
           camera.position.set(dist * Math.sin(c.yaw) * cp2, dist * Math.sin(c.pitch) + lookY, dist * Math.cos(c.yaw) * cp2);
@@ -351,6 +380,11 @@ export default function CanvasFrame3D({
           sun.position.y = BASE_DIST * 0.9;
           sun.position.x += BASE_DIST * 0.3 * Math.cos(c.yaw);
           sun.position.z -= BASE_DIST * 0.3 * Math.sin(c.yaw);
+          fill.position.copy(camera.position);
+          fill.target.position.set(0, lookY, 0);
+          fill.target.updateMatrixWorld();
+          // มองจากบน = แดดพอแล้ว · ก้มลงต่ำกว่าพื้นยิ่งเติมแรง
+          fill.intensity = c.pitch < 0 ? 0.35 + Math.min(0.6, -c.pitch * 0.6) : 0.25;
           renderer.render(scene, camera);
         };
         raf = requestAnimationFrame(tick);
@@ -425,6 +459,7 @@ export default function CanvasFrame3D({
             }
             drag.current = { x: e.clientX, y: e.clientY, yaw: cam.current.yaw, pitch: cam.current.pitch };
             cam.current.targetYaw = null;
+            cam.current.targetPitch = null;
             cam.current.dragging = true;
           }}
           onPointerMove={(e) => {
@@ -438,7 +473,8 @@ export default function CanvasFrame3D({
             const d = drag.current;
             if (!d) return;
             cam.current.yaw = d.yaw + (e.clientX - d.x) * 0.011;
-            cam.current.pitch = Math.max(-0.15, Math.min(1.2, d.pitch + (e.clientY - d.y) * 0.006));
+            // ↕ ก้มดูด้านล่างได้ (เดิมจำกัด −0.15 · เจ้าของร้านสั่ง 23 ต.ค. 69 "ให้ดูข้างล่างได้")
+            cam.current.pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, d.pitch + (e.clientY - d.y) * 0.006));
           }}
           onPointerUp={(e) => {
             pts.current.delete(e.pointerId);
@@ -511,6 +547,20 @@ export default function CanvasFrame3D({
                   className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
                 >
                   {v === "front" ? "👁 ด้านหน้า" : CANVAS_VIEW_TH[v]}
+                </button>
+              ))}
+            </span>
+            <span className="flex items-center rounded-full bg-stone-100 p-0.5 ring-1 ring-stone-200/70" role="radiogroup" aria-label="มุมบน-ล่าง">
+              {(["top", "bottom"] as CanvasView[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={!spin && view === v}
+                  onClick={() => goView(v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${!spin && view === v ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"}`}
+                >
+                  {v === "top" ? "⬆ ด้านบน" : "⬇ ด้านล่าง"}
                 </button>
               ))}
             </span>
