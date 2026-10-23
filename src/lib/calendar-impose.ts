@@ -14,7 +14,7 @@
  */
 
 import { PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFPage, PDFString, appendBezierCurve, closePath, moveTo, popGraphicsState, pushGraphicsState, rgb, setFillingRgbColor, type PDFImage } from "pdf-lib";
-import { printPageTag } from "@/lib/print-sides";
+import { pageCardNo, printPageTag } from "@/lib/print-sides";
 
 const PT = 72 / 25.4;
 
@@ -160,16 +160,27 @@ export async function buildPrintPdf(input: {
     fillCurvesEvenOdd(pg, wp.curves, H);
     pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
   }
-  doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
+  /**
+   * ✂️ หน้าเส้นไดคัท — ชุดหลายใบ (ชื่อหน้า "ใบที่ N · …") = ใบละ 1 หน้า เรียงตามใบ (Card01-Cut …)
+   * เดิมมีหน้าเดียวท้ายไฟล์ → โปสการ์ด 8 ใบได้เส้นตัดแค่ 1 อัน ต้องก๊อปเอง (เจ้าของร้านแจ้ง 23 ต.ค. 69 OD-261023-1997 "มันควรต้องมี 8 อัน")
+   */
+  const cards = [...new Set(input.pages.map((p) => pageCardNo(p.name)).filter((n): n is number => n != null))];
+  const cutTags = cards.length > 1 ? cards.map((c) => `Card${String(c).padStart(2, "0")}-Cut`) : ["CutLine"];
+  for (let k = 0; k < cutTags.length; k++)
+    doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
   const n0 = input.pages.length;
   doc.setSubject(
-    [...input.pages.map((p, i) => `${i + 1}.${p.name}`), ...whites.map((wp, i) => `${n0 + i + 1}.${wp.name}`), `${n0 + whites.length + 1}.เส้นไดคัท`].join(" · "),
+    [
+      ...input.pages.map((p, i) => `${i + 1}.${p.name}`),
+      ...whites.map((wp, i) => `${n0 + i + 1}.${wp.name}`),
+      ...cutTags.map((_, k) => `${n0 + whites.length + k + 1}.เส้นไดคัท${cards.length > 1 ? ` ใบที่ ${cards[k]}` : ""}`),
+    ].join(" · "),
   );
   doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
   const tags = input.pages.map((p, i) => printPageTag(p.name, i));
-  setPageTags(doc, [...tags, ...whites.map((_, i) => `White-${i + 1}`), "CutLine"]);
+  setPageTags(doc, [...tags, ...whites.map((_, i) => `White-${i + 1}`), ...cutTags]);
   const bytes = await doc.save();
   return new File([bytes as BlobPart], name, { type: "application/pdf" });
 }

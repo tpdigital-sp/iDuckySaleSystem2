@@ -167,12 +167,18 @@ export function sideSheetOf(it: { artworkUrls?: string[]; artworkBackUrls?: stri
   return out;
 }
 
+/** เลขใบของหน้า ("ใบที่ 3 · ด้านหลัง" → 3) · ชื่อไม่บอกใบ = null */
+export function pageCardNo(name: string): number | null {
+  const n = /(?:ใบที่|ชิ้นที่|แผ่นที่|card)\s*(\d+)/i.exec(name)?.[1];
+  return n ? Number(n) : null;
+}
+
 /**
  * ป้ายหน้าภาษาอังกฤษ ("Card01-Front") — ชื่อหน้าใน PDF (PageLabels) / .ai รุ่นเก่าอ่านไทยไม่ได้
  * ชื่อไม่บอกใบ/ด้าน = "P01"
  */
 export function printPageTag(name: string, i: number): string {
-  const card = /(?:ใบที่|ชิ้นที่|แผ่นที่|card)\s*(\d+)/i.exec(name)?.[1];
+  const card = pageCardNo(name);
   const side = pageSideOf(name);
   const pad = (n: number | string) => String(n).padStart(2, "0");
   if (!side) return card ? `Card${pad(card)}` : `P${pad(i + 1)}`;

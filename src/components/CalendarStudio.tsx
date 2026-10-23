@@ -108,6 +108,7 @@ import type { DoorHangerMock } from "@/lib/door-hanger-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, traceAlphaMm, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
+import { pageCardNo } from "@/lib/print-sides";
 
 export interface CalendarState {
   format: string;
@@ -4146,12 +4147,15 @@ export default function CalendarStudio({
       name: (noCal ? title : `${title}-ปฏิทิน${back.year}`).slice(0, 60),
       ...(whites.length ? { whites } : {}),
     });
+    // ✂️ ชุดหลายใบ = หน้าเส้นไดคัทใบละหน้า (buildPrintPdf · 23 ต.ค. 69)
+    const cardN = new Set(pages.map((p) => pageCardNo(p.name)).filter((n) => n != null)).size;
+    const cutN = cardN > 1 ? cardN : 1;
     return {
       file,
       note:
-        `ไฟล์เดียว ${pages.length + whites.length + 1} หน้า — ${pages.length} หน้างาน (รวมตัดตก ${fmt.bleed} มม. · ตั้ง TrimBox ที่เส้นตัด)` +
+        `ไฟล์เดียว ${pages.length + whites.length + cutN} หน้า — ${pages.length} หน้างาน (รวมตัดตก ${fmt.bleed} มม. · ตั้ง TrimBox ที่เส้นตัด)` +
         (whites.length ? ` + ${whites.length} หน้ารองขาว (ถมดำ = ที่พิมพ์ขาว)` : "") +
-        ` + หน้าเส้นไดคัทท้ายไฟล์`,
+        (cutN > 1 ? ` + หน้าเส้นไดคัทใบละหน้า ${cutN} หน้าท้ายไฟล์` : ` + หน้าเส้นไดคัทท้ายไฟล์`),
     };
   }
 
