@@ -9,7 +9,7 @@
  * ผสม: ลาย × เงาผ้าขาว + ผิวผ้า + ประกาย (satinShading) — สูตรเดียวกับ Scrunchy
  */
 
-import { loadImg, satinShading } from "@/lib/scrunchy-photo";
+import { loadImg, mixSatin, satinShading } from "@/lib/scrunchy-photo";
 
 export { loadImg };
 export const SCARF_ASSET = "/mock/scarf";
@@ -291,11 +291,8 @@ export function renderScarfView(key: ScarfView, photo: HTMLImageElement, mask: H
       const shade = sh ? sh.shade[i >> 2] : 1;
       const spec = sh ? sh.spec[i >> 2] : 0;
       const la = sample(fx, fy, 3) / 255;
-      for (let ch = 0; ch < 3; ch++) {
-        let vv = (sample(fx, fy, ch) * la + 255 * (1 - la)) * shade;
-        vv += (255 - vv) * spec;
-        dd[i + ch] = vv;
-      }
+      const dc = (ch: number) => sample(fx, fy, ch) * la + 255 * (1 - la);
+      mixSatin(dc(0), dc(1), dc(2), shade, spec, dd, i);
       dd[i + 3] = al;
     }
   octx.putImageData(img, 0, 0);

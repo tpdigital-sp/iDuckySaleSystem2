@@ -57,10 +57,25 @@ export function satinShading(ph: Uint8ClampedArray, _mk: Uint8ClampedArray, w: n
   const spec = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const L = (0.299 * ph[i * 4] + 0.587 * ph[i * 4 + 1] + 0.114 * ph[i * 4 + 2]) / 255;
-    shade[i] = Math.min(1.1, L / 0.9);
-    spec[i] = Math.max(0, (L - 0.93) / 0.07) * 0.55;
+    // 🎨 โทนสดนุ่ม (เจ้าของร้านส่งภาพตัวอย่าง 24 ต.ค. 69 "เป็นโทนแบบนี้ได้ไหม"): เงาเบาลง 40% · ประกายเหลือครึ่งและนุ่ม
+    //   (เดิม shade = L/0.9 ตรง ๆ · ประกาย (L − 0.93)/0.07 × 0.55 → ร่องจีบเทาหม่น ประกายขาวทับสี)
+    const base = Math.min(1.08, L / 0.9);
+    shade[i] = base >= 1 ? base : 1 - (1 - base) * 0.6;
+    spec[i] = Math.pow(Math.max(0, (L - 0.93) / 0.07), 1.4) * 0.28;
   }
   return { shade, spec };
+}
+
+/** ผสมสีลาย 1 พิกเซลกับแสงเงาผ้า — อิ่มสีขึ้น 15% (โทนสดแบบภาพตัวอย่าง) แล้วคูณเงา + ประกาย · เขียนลง out[o … o+2] */
+export function mixSatin(r: number, g: number, b: number, shade: number, spec: number, out: Uint8ClampedArray, o: number) {
+  const y = 0.299 * r + 0.587 * g + 0.114 * b;
+  const SAT = spec || shade !== 1 ? 1.15 : 1;
+  const rgb = [r, g, b];
+  for (let ch = 0; ch < 3; ch++) {
+    let v = (y + (rgb[ch] - y) * SAT) * shade;
+    v += (255 - v) * spec;
+    out[o + ch] = v;
+  }
 }
 
 /** วาดภาพสำเร็จ 1 มุม: รูปผ้าขาว + ลายลูกค้า (พื้นโปร่งนอกผ้า) */
@@ -133,12 +148,8 @@ export function renderScrunchyView(
       const shade = sh ? sh.shade[i >> 2] : 1;
       const spec = sh ? sh.spec[i >> 2] : 0;
       const la = sample(fx, fy, 3) / 255; // ส่วนโปร่งของลาย = ผ้าขาวตามรูป
-      for (let ch = 0; ch < 3; ch++) {
-        const dc = sample(fx, fy, ch) * la + 255 * (1 - la);
-        let vv = dc * shade;
-        vv += (255 - vv) * spec;
-        d[i + ch] = vv;
-      }
+      const dc = (ch: number) => sample(fx, fy, ch) * la + 255 * (1 - la);
+      mixSatin(dc(0), dc(1), dc(2), shade, spec, d, i);
       d[i + 3] = al;
     }
   octx.putImageData(img, 0, 0);
