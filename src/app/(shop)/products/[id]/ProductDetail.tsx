@@ -157,6 +157,7 @@ import {
   type PriceLinkSpec,
 } from "@/lib/price-link";
 import {
+  downloadHidden,
   fileHref,
   filesForSelections,
   fileChoiceLabel,
@@ -3119,7 +3120,8 @@ export default function ProductDetail({
       const chosen = optLabel ? (effective[optLabel] ?? "").trim() : "";
       return filesForSelections(t, effective).flatMap((f) => {
         const href = fileHref(f);
-        if (!href) return [];
+        // 🙈 ไฟล์ที่ตั้งซ่อนจากกล่องดาวน์โหลดตามสเปค (จอออกแบบยังใช้ · โฟโต้การ์ด PVC สกรีน 2 ด้าน 24 ต.ค. 69)
+        if (!href || downloadHidden(f, effective)) return [];
         return [
           {
             key: f.id,

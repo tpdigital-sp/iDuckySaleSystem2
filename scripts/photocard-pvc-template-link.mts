@@ -121,6 +121,8 @@ const landUrl = await upload(landBytes, "file", "Card-PVC-landscape", "pdf");
 const skinUrl = await upload(readFileSync(`${OUT}skin.png`), "preview", "Card-PVC-skin", "png");
 const skinLand = await upload(readFileSync(`${OUT}skin-land.png`), "preview", "Card-PVC-skin-landscape", "png");
 const LAND = { label: ORIENT, choices: ["แนวนอน"] };
+// 🙈 สกรีน 2 ด้าน: กล่องดาวน์โหลดโชว์แค่ชุด Card PVC (2ด้าน) — จอออกแบบยังใช้ไฟล์ชุดนี้ (เจ้าของร้านสั่ง 24 ต.ค. 69)
+const HIDE2 = { label: SIDES, choices: ["สกรีน 2 ด้าน"] };
 const prev = (mat: string, land: boolean) => old.find((f) => (f.choices ?? [f.choice]).includes(mat) && !!f.when === land);
 const port = (mat: string, white: boolean): TemplateFile => ({
   id: prev(mat, false)?.id ?? (mat === WHITE ? portraitOld?.id : undefined) ?? rid(),
@@ -133,6 +135,7 @@ const port = (mat: string, white: boolean): TemplateFile => ({
   skinUrl,
   cutCurves: cut.curves,
   finishedMm: { w: 54, h: 85.6 },
+  downloadHideWhen: HIDE2,
   ...(white ? { whiteUnder: true } : {}),
 });
 const land = (mat: string, white: boolean): TemplateFile => ({
@@ -147,6 +150,7 @@ const land = (mat: string, white: boolean): TemplateFile => ({
   skinUrl: skinLand,
   cutCurves: landCurves,
   finishedMm: { w: 85.6, h: 54 },
+  downloadHideWhen: HIDE2,
   ...(white ? { whiteUnder: true } : {}),
 });
 const files = [port(WHITE, false), port(CLEAR, true), land(WHITE, false), land(CLEAR, true)];

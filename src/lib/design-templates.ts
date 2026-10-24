@@ -44,6 +44,11 @@ export interface TemplateFile {
    * ไม่ตั้ง = ใช้ได้ทุกค่าของกลุ่มอื่น · ใช้แยกไฟล์แนวตั้ง/แนวนอนของกระดาษเดียวกัน
    */
   when?: TemplateWhen | TemplateWhen[];
+  /**
+   * 🙈 ไม่โชว์ไฟล์นี้ในกล่อง "เทมเพลตไฟล์งาน" (ดาวน์โหลด) เมื่อกลุ่มอื่นเลือกค่าเหล่านี้ — จอออกแบบบนเว็บยังใช้ไฟล์นี้ตามเดิม
+   * (โฟโต้การ์ด PVC สกรีน 2 ด้าน: ให้โหลดแค่ชุด 2 ด้าน แต่จอออกแบบยังใช้สกิน/เส้นตัดของ Card PVC · เจ้าของร้านสั่ง 24 ต.ค. 69)
+   */
+  downloadHideWhen?: TemplateWhen | TemplateWhen[];
   /** ไฟล์ที่อัปเข้าระบบ (Supabase Storage) */
   fileUrl?: string;
   fileName?: string;
@@ -180,6 +185,13 @@ export interface TemplateWhen {
 }
 
 /** เงื่อนไขของไฟล์เป็นรายการ (ข้อมูลเก่าเก็บเป็นอันเดียว) · ตัดอันที่ยังไม่ได้เลือกค่าทิ้ง */
+/** ไฟล์นี้ซ่อนจากกล่องดาวน์โหลดสำหรับสเปคที่เลือกอยู่ไหม (downloadHideWhen ตรงทุกข้อ) */
+export function downloadHidden(f: TemplateFile, selections: Record<string, string> = {}): boolean {
+  const w = f.downloadHideWhen;
+  const list = (Array.isArray(w) ? w : w ? [w] : []).filter((x) => x?.label && x.choices?.length);
+  return list.length > 0 && list.every((x) => x.choices.includes((selections[x.label] ?? "").trim()));
+}
+
 export function whenList(f: TemplateFile): TemplateWhen[] {
   const w = f.when;
   return (Array.isArray(w) ? w : w ? [w] : []).filter((x) => x?.label && x.choices?.length);
