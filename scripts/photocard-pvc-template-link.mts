@@ -170,7 +170,8 @@ console.log(`   ✅ ชุด "${t.name}" 4 ไฟล์ (ขาว/ใส × �
 const cur = ((await sb.from("products").select("data").eq("id", PRODUCT).single()).data?.data ?? product) as Product;
 const next: Product = {
   ...cur,
-  templateIds: [TPL],
+  // ชุดอื่นที่ผูกต่อท้าย (Card PVC (2ด้าน) — photocard-pvc-2side-replace.mts) คงไว้ · Card PVC ต้องเป็นชุดแรก (จอออกแบบหยิบชุดแรก)
+  templateIds: [TPL, ...(cur.templateIds ?? []).filter((x) => x !== TPL)],
   calendarStudio: { ...(cur.calendarStudio ?? {}), yearLabel: cur.calendarStudio?.yearLabel ?? "", formats: FORMATS },
   savedAt: new Date().toISOString(),
 };

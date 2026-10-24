@@ -6,19 +6,26 @@
  *   npx tsx scripts/photocard-pvc-2side-replace.mts --write    # อัป + บันทึก (ไฟล์เดิมทุกไบต์ = ข้าม)
  *
  * ไฟล์ NAS 2 อาร์ตบอร์ด 54.9×86.6 (เลเยอร์ หน้า/หลัง) · คง id ชุด/ไฟล์ · ไฟล์เก่าเก็บใน retiredPaths
- * ชุดนี้ไม่ได้ผูกสินค้า (โฟโต้การ์ด PVC ใช้ชุด Card PVC + tpl2 — ดู photocard-pvc-template-link.mts)
+ * 🔗 ผูกสินค้า photocard-pvc-uv (เจ้าของร้านสั่ง 24 ต.ค. 69 "ให้โชว์ตอนเลือกสกรีน 2 ด้าน"):
+ *   optionLabel "สกรีนกี่ด้าน" + ไฟล์ choices ["สกรีน 2 ด้าน"] → สกรีน 1 ด้าน filesForSelections ว่าง ไม่โชว์
+ *   templateIds = [Card PVC, ชุดนี้] — ต้องอยู่ "หลัง" Card PVC: จอออกแบบหยิบชุดแรกที่มีไฟล์ (ชุดนี้ไม่มีสกิน/เส้นตัด/แนวนอน)
  */
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import type { DesignTemplate, TemplateFile } from "../src/lib/design-templates";
+import { filesForSelections, type DesignTemplate, type TemplateFile } from "../src/lib/design-templates";
+import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
 const TPL = "tpl-7rret45rw";
 const SRC = "/Volumes/iDuckyShop/All Template/24 Card Holder - Card PVC/Card PVC (สกรีน2ด้าน).ai";
 const NAME = "Card PVC (สกรีน2ด้าน).ai";
+const PRODUCT = "photocard-pvc-uv";
+const MAIN = "tpl-l9vbfl2j9";
+const SIDES = "สกรีนกี่ด้าน";
+const TWO = "สกรีน 2 ด้าน";
 const die = (m: string): never => {
   console.error("✗", m);
   process.exit(1);
@@ -51,27 +58,44 @@ const t = ((row as Row | null) ?? die(`ไม่พบชุด ${TPL}`)).data;
 if ((t.files?.length ?? 0) !== 1) die(`ชุด "${t.name}" มี ${t.files?.length} ไฟล์`);
 const old = t.files![0];
 const bytes = readFileSync(SRC);
-if (old.fileUrl && md5(Buffer.from(await (await fetch(old.fileUrl)).arrayBuffer())) === md5(bytes)) {
-  console.log(`✓ ชุด "${t.name}" ใช้ไฟล์นี้อยู่แล้ว`);
-  process.exit(0);
-}
+const same = !!old.fileUrl && md5(Buffer.from(await (await fetch(old.fileUrl)).arrayBuffer())) === md5(bytes);
 console.log(
-  `🔁 "${t.name}" (${TPL}) · ${old.fileName} ${old.fileSize?.toLocaleString()} bytes ${old.widthMm}×${old.heightMm}` +
-    `\n   → ${NAME} ${bytes.length.toLocaleString()} bytes ${info.w}×${info.h} · ${info.pages} อาร์ตบอร์ด · เลเยอร์ ${info.layers.join(" / ")}`,
+  same
+    ? `✓ ชุด "${t.name}" ใช้ไฟล์นี้อยู่แล้ว`
+    : `🔁 "${t.name}" (${TPL}) · ${old.fileName} ${old.fileSize?.toLocaleString()} bytes ${old.widthMm}×${old.heightMm}` +
+        `\n   → ${NAME} ${bytes.length.toLocaleString()} bytes ${info.w}×${info.h} · ${info.pages} อาร์ตบอร์ด · เลเยอร์ ${info.layers.join(" / ")}`,
 );
+const product = ((await sb.from("products").select("data").eq("id", PRODUCT).single()).data?.data ?? die(`ไม่พบสินค้า ${PRODUCT}`)) as Product;
+const g = product.options.find((o) => o.label === SIDES) ?? die(`ไม่มีกลุ่ม "${SIDES}"`);
+if (!g.choices.some((c) => c.name === TWO)) die(`กลุ่ม "${SIDES}" ไม่มี "${TWO}"`);
+const ids = [MAIN, TPL];
+const linked = t.optionLabel === SIDES && JSON.stringify(old.choices ?? []) === JSON.stringify([TWO]);
+const prodOk = JSON.stringify(product.templateIds ?? []) === JSON.stringify(ids);
+console.log(`🔗 ชุด → "${SIDES}" = ${TWO} ${linked ? "✓" : "✎"} · ${product.name} templateIds ${JSON.stringify(product.templateIds ?? [])} → ${JSON.stringify(ids)} ${prodOk ? "✓" : "✎"}`);
+if (same && linked && prodOk) process.exit(0);
 if (!WRITE) {
   console.log("\n(dry-run — ใส่ --write เพื่ออัปและบันทึก)");
   process.exit(0);
 }
-const path = `file/${randomUUID().slice(0, 8)}-Card-PVC-2side.ai`;
-const { error: ue } = await sb.storage.from(BUCKET).upload(path, bytes, { contentType: "application/postscript", upsert: false });
-if (ue) die(`อัปไฟล์: ${ue.message}`);
-const nf: TemplateFile = { ...old, fileUrl: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, fileName: NAME, fileSize: bytes.length, widthMm: info.w, heightMm: info.h };
-const retired = [...new Set([...(t.retiredPaths ?? []), pathOf(old.fileUrl), pathOf(old.previewUrl)].filter(Boolean) as string[])];
-const { error } = await sb
-  .from("products")
-  .update({ data: { ...t, files: [nf], retiredPaths: retired, savedAt: new Date().toISOString() } })
-  .eq("id", `__template_${TPL}`);
-if (error) die(`บันทึก: ${error.message}`);
-console.log(`   ✅ แทนแล้ว → ${path} · retiredPaths ${retired.length}`);
-await revalidateLive(env, { templateIds: [TPL] });
+let nf: TemplateFile = { ...old, choices: [TWO] };
+let retired = t.retiredPaths ?? [];
+if (!same) {
+  const path = `file/${randomUUID().slice(0, 8)}-Card-PVC-2side.ai`;
+  const { error: ue } = await sb.storage.from(BUCKET).upload(path, bytes, { contentType: "application/postscript", upsert: false });
+  if (ue) die(`อัปไฟล์: ${ue.message}`);
+  nf = { ...nf, fileUrl: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, fileName: NAME, fileSize: bytes.length, widthMm: info.w, heightMm: info.h };
+  retired = [...new Set([...retired, pathOf(old.fileUrl), pathOf(old.previewUrl)].filter(Boolean) as string[])];
+  console.log(`   ✅ แทนไฟล์แล้ว → ${path} · retiredPaths ${retired.length}`);
+}
+const nt = { ...t, optionLabel: SIDES, optionProductId: PRODUCT, files: [nf], retiredPaths: retired, savedAt: new Date().toISOString() };
+if (filesForSelections(nt, { [SIDES]: TWO }).length !== 1 || filesForSelections(nt, { [SIDES]: "สกรีน 1 ด้าน" }).length) die("เงื่อนไขสกรีน 2 ด้านจับไฟล์ไม่ตรง");
+const { error } = await sb.from("products").update({ data: nt }).eq("id", `__template_${TPL}`);
+if (error) die(`บันทึกชุด: ${error.message}`);
+if (!prodOk) {
+  // อ่านล่าสุดก่อนเขียน แตะเฉพาะ templateIds
+  const cur = ((await sb.from("products").select("data").eq("id", PRODUCT).single()).data?.data ?? product) as Product;
+  const { error: pe } = await sb.from("products").update({ data: { ...cur, templateIds: ids, savedAt: new Date().toISOString() } }).eq("id", PRODUCT);
+  if (pe) die(`บันทึกสินค้า: ${pe.message}`);
+}
+console.log(`   ✅ ผูกชุดกับ ${product.name} (โชว์เมื่อ ${SIDES} = ${TWO})`);
+await revalidateLive(env, { productIds: [PRODUCT], templateIds: ids });
